@@ -1,0 +1,12 @@
+[package]
+name = "duckypad_daemon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = "*"
+notify = "4.0.0"
+x11rb = "0.10.1"
+hidapi = "1.4.2"
+sysinfo = "0.26.0"
+xdg = "2.4.1"
