@@ -8,10 +8,6 @@ pub fn active_window() -> (Option<String>, Option<String>) {
     let root = con.setup().roots[screen].root;
 
     let net_active_window = get_atom(&con, b"_NET_ACTIVE_WINDOW");
-    let net_wm_name = get_atom(&con, b"_NET_WM_NAME");
-    let net_wm_pid = get_atom(&con, b"_NET_WM_PID");
-    let utf8_string = get_atom(&con, b"UTF8_STRING");
-    let cardinal: Atom = AtomEnum::CARDINAL.into();
 
     let window: Atom = AtomEnum::WINDOW.into();
     let active_window = con
@@ -36,39 +32,60 @@ pub fn active_window() -> (Option<String>, Option<String>) {
             .focus
     };
 
-    let name = con
-        .get_property(false, active_window, net_wm_name, utf8_string, 0, u32::MAX)
-        .expect("Missing property _NET_WM_NAME")
-        .reply()
-        .expect("Failed to get reply for _NET_WM_NAME");
-    let name = std::str::from_utf8(&name.value)
-        .expect("Invalid UTF-8")
-        .to_string();
+    let cmd = match get_wm_pid(&con, active_window) {
+        Some(pid) => get_cmd(pid),
+        None => None,
+    };
 
-    let pid = con
-        .get_property(false, active_window, net_wm_pid, cardinal, 0, u32::MAX)
-        .expect("Missing property _NET_WM_PID")
-        .reply()
-        .expect("Failed to get reply for _NET_WM_PID");
-    let pid = i32::from_le_bytes(match pid.value[..].try_into() {
-        Ok(x) => x,
-        Err(_) => [0; 4],
-    });
+    (cmd, get_wm_name(&con, active_window))
+}
 
-    let cmd = if pid == 0 {
-        None
-    } else {
+fn get_wm_name(con: &RustConnection, active_window: u32) -> Option<String> {
+    let net_wm_name = get_atom(&con, b"_NET_WM_NAME");
+    let utf8_string = get_atom(&con, b"UTF8_STRING");
+
+    if let Ok(property) =
+        con.get_property(false, active_window, net_wm_name, utf8_string, 0, u32::MAX)
+    {
+        if let Ok(reply) = property.reply() {
+            if let Ok(str) = std::str::from_utf8(&reply.value) {
+                return Some(str.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+fn get_wm_pid(con: &RustConnection, active_window: u32) -> Option<i32> {
+    let net_wm_pid = get_atom(&con, b"_NET_WM_PID");
+    let cardinal: Atom = AtomEnum::CARDINAL.into();
+
+    if let Ok(property) = con.get_property(false, active_window, net_wm_pid, cardinal, 0, u32::MAX)
+    {
+        if let Ok(reply) = property.reply() {
+            return Some(i32::from_le_bytes(match reply.value[..].try_into() {
+                Ok(arr) => arr,
+                Err(_) => [0; 4],
+            }));
+        }
+    }
+
+    None
+}
+
+fn get_cmd(pid: i32) -> Option<String> {
+    if pid != 0 {
         let mut sys = System::new_all();
         sys.refresh_processes();
         let process = sys.process(Pid::from(pid));
 
-        if process.is_none() {
-            return (None, None);
+        if process.is_some() {
+            return Some(process.unwrap().name().to_string());
         }
+    }
 
-        Some(process.unwrap().name().to_string())
-    };
-    (cmd, Some(name))
+    None
 }
 
 fn get_atom(con: &RustConnection, property: &[u8]) -> Atom {
