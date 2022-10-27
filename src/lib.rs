@@ -21,7 +21,7 @@ pub fn read_config() -> Value {
     json
 }
 
-pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) {
+pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidapi::HidError> {
     assert!(profile >= 1 && profile <= 31); // duckyPad limits
 
     println!("Switching to profile {}", profile);
@@ -30,7 +30,8 @@ pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) {
     buf[2] = 1;
     buf[3] = profile;
 
-    hid::write(device, buf);
+    let _ = hid::write(device, buf)?;
+    Ok(())
 }
 
 pub fn next_profile(config: &Value) -> Option<u8> {

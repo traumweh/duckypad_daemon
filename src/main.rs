@@ -45,8 +45,8 @@ fn main() {
     let api = hidapi::HidApi::new().expect("Failed to connect to HidApi.");
 
     {
-        let duckypad = hid::init(&api);
-        let info = hid::info(&duckypad);
+        let duckypad = hid::init(&api).expect("Failed to connect to duckyPad.");
+        let info = hid::info(&duckypad).expect("Failed to connect to duckyPad.");
         println!(
             "Model: {}\tSerial: {}\tFirmware: {}",
             info.model, info.serial, info.firmware
@@ -61,9 +61,11 @@ fn main() {
         if profile.is_some()
             && (prev_profile.is_none() || profile.unwrap() != prev_profile.unwrap())
         {
-            let duckypad = hid::init(&api);
-            goto_profile(&duckypad, profile.unwrap());
-            prev_profile = profile;
+            if let Ok(duckypad) = hid::init(&api) {
+                if let Ok(_) = goto_profile(&duckypad, profile.unwrap()) {
+                    prev_profile = profile;
+                }
+            }
         }
 
         std::thread::sleep(std::time::Duration::from_millis(250));
