@@ -2,6 +2,14 @@
 The daemon works like dekuNukem's [duckyPad Profile Auto-switcher](https://github.com/dekuNukem/duckyPad-profile-autoswitcher) but without the frontend.
 The main idea is that the daemon runs in the background 
 
+## Building & Installation
+1. Clone the repository into `path/to/repository`
+2. `cargo install --path path/to/repository`
+
+This will install the binary to:
+- `$CARGO_INSTALL_ROOT` or `$CARGO_HOME` (if set)
+- `$HOME/.cargo/bin/`
+
 ## Config
 This daemon shares its config with dekuNukem's gui-app, so you can still use their gui for configuration.
 The daemon will detect if you make changes to the file (either manually or via the gui) and will reload automatically.
