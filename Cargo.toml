@@ -10,3 +10,4 @@ x11rb = "0.10.1"
 hidapi = "1.4.2"
 sysinfo = "0.26.0"
 xdg = "2.4.1"
+clap = { version = "4.0.18", features = ["derive"] }

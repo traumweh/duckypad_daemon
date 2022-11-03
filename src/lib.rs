@@ -4,35 +4,51 @@ pub mod x11;
 use serde_json::Value;
 use std::fs::File;
 use std::io::prelude::*;
+use std::path::PathBuf;
 
-pub fn config_file() -> std::path::PathBuf {
+fn create_default_config(path: &PathBuf) {
+    eprintln!("Creating default config, because file doesn't exist");
+    let mut file = File::create(path).expect("Couldn't create config file!");
+    file.write_all(b"{\"autoswitch_enabled\": false, \"rules_list\": []}")
+        .expect("Couldn't write to config file!");
+}
+
+pub fn config_file(path: &Option<String>) -> std::path::PathBuf {
+    if let Some(config_path) = path {
+        let config = PathBuf::from(config_path);
+
+        if !config.exists() {
+            create_default_config(&config);
+        }
+
+        if !config.is_file() {
+            panic!("Supplied config-path isn't a file!");
+        }
+
+        return config;
+    }
+
     let xdg_dirs = xdg::BaseDirectories::with_prefix("duckypad_autoswitcher")
         .expect("Failed to determine config location");
     let config = xdg_dirs.find_data_file("config.txt");
 
     if config.is_none() {
-        eprintln!("Creating default config, because config.txt doesn't exist");
-
-        let path = xdg_dirs
+        let config_path = xdg_dirs
             .place_data_file("config.txt")
             .expect("Couldn't create config directory!");
-        println!("Path: {}", &path.to_str().unwrap());
-        let mut file = File::create(&path).expect("Couldn't create config file!");
-        file.write_all(b"{\"autoswitch_enabled\": false, \"rules_list\": []}")
-            .expect("Couldn't write to config file!");
-
-        return path;
+        create_default_config(&config_path);
+        return config_path;
     }
 
     config.unwrap()
 }
 
-pub fn read_config() -> Value {
-    let file = std::fs::File::open(config_file())
-        .unwrap_or_else(|_| panic!("Error reading file: '{}'", config_file().display()));
+pub fn read_config(path: &PathBuf) -> Value {
+    let file = std::fs::File::open(&path)
+        .unwrap_or_else(|_| panic!("Error reading file: '{}'", path.display()));
     let reader = std::io::BufReader::new(file);
     let json: Value = serde_json::from_reader(reader)
-        .unwrap_or_else(|_| panic!("Error parsing file as json: '{}'", config_file().display()));
+        .unwrap_or_else(|_| panic!("Error parsing file as json: '{}'", path.display()));
 
     json
 }

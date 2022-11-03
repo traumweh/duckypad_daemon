@@ -1,10 +1,21 @@
+use clap::Parser;
 use duckypad_daemon::{config_file, goto_profile, hid, next_profile, read_config};
 use notify::{watcher, DebouncedEvent::Write, RecursiveMode, Watcher};
 use std::sync::{mpsc::channel, Arc, Mutex};
 use std::thread;
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Config file to use
+    #[arg(short, long, default_value = None)]
+    config: Option<String>,
+}
+
 fn main() {
-    let config = Arc::new(Mutex::new(read_config()));
+    let args = Args::parse();
+    let config_path = config_file(&args.config);
+    let config = Arc::new(Mutex::new(read_config(&config_path)));
     let config_thread = Arc::clone(&config);
 
     thread::spawn(move || {
@@ -12,11 +23,11 @@ fn main() {
         let mut watcher = watcher(tx, std::time::Duration::from_secs(10))
             .expect("Failed to start config file watcher");
         watcher
-            .watch(config_file(), RecursiveMode::NonRecursive)
+            .watch(&config_path, RecursiveMode::NonRecursive)
             .unwrap_or_else(|err| {
                 panic!(
                     "Failed to watch file: '{}'\nGot error: {:?}",
-                    config_file().display(),
+                    config_path.display(),
                     err
                 )
             });
@@ -28,12 +39,12 @@ fn main() {
 
                     if let Write(_) = event {
                         let mut config_lock = config_thread.lock().expect("Failed to lock mutex.");
-                        *config_lock = read_config();
+                        *config_lock = read_config(&config_path);
                     }
                 }
                 Err(err) => panic!(
                     "Failed to watch file: '{}'\nGot error: {:?}",
-                    config_file().display(),
+                    config_path.display(),
                     err
                 ),
             }
