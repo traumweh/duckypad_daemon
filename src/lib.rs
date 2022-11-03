@@ -2,13 +2,29 @@ pub mod hid;
 pub mod x11;
 
 use serde_json::Value;
+use std::fs::File;
+use std::io::prelude::*;
 
 pub fn config_file() -> std::path::PathBuf {
     let xdg_dirs = xdg::BaseDirectories::with_prefix("duckypad_autoswitcher")
         .expect("Failed to determine config location");
-    xdg_dirs
-        .find_data_file("config.txt")
-        .expect("Config file isn't present")
+    let config = xdg_dirs.find_data_file("config.txt");
+
+    if config.is_none() {
+        eprintln!("Creating default config, because config.txt doesn't exist");
+
+        let path = xdg_dirs
+            .place_data_file("config.txt")
+            .expect("Couldn't create config directory!");
+        println!("Path: {}", &path.to_str().unwrap());
+        let mut file = File::create(&path).expect("Couldn't create config file!");
+        file.write_all(b"{\"autoswitch_enabled\": false, \"rules_list\": []}")
+            .expect("Couldn't write to config file!");
+
+        return path;
+    }
+
+    config.unwrap()
 }
 
 pub fn read_config() -> Value {
