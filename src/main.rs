@@ -10,6 +10,10 @@ struct Args {
     /// Config file to use
     #[arg(short, long, default_value = None)]
     config: Option<String>,
+
+    /// Wait for x seconds and retry if device isn't connected on daemon startup
+    #[arg(short, long, default_value = None)]
+    wait: Option<u64>,
 }
 
 fn main() {
@@ -56,8 +60,25 @@ fn main() {
     let api = hidapi::HidApi::new().expect("Failed to connect to HidApi.");
 
     {
-        let duckypad = hid::init(&api).expect("Failed to connect to duckyPad.");
-        let info = hid::info(&duckypad).expect("Failed to connect to duckyPad.");
+        let duckypad = if let Some(wait) = args.wait {
+            loop {
+                if let Ok(dev) = hid::init(&api) {
+                    break dev;
+                }
+
+                eprintln!(
+                    "Failed to connect to duckyPad. Retrying in {} seconds!",
+                    wait
+                );
+                std::thread::sleep(std::time::Duration::from_secs(wait));
+            }
+        } else {
+            hid::init(&api).expect(
+                "Failed to connect to duckyPad. See --help if you want to enable auto-retrying.",
+            )
+        };
+
+        let info = hid::info(&duckypad).expect("Failed to connect to duckyPad to retrieve device information. Maybe you are missing device permissions?");
         println!(
             "Model: {}\tSerial: {}\tFirmware: {}",
             info.model, info.serial, info.firmware
