@@ -1,10 +1,13 @@
-use sysinfo::{Pid, ProcessExt, System, SystemExt};
+use sysinfo::{Pid, ProcessExt, ProcessRefreshKind, System, SystemExt};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt};
 use x11rb::rust_connection::RustConnection;
 
-pub fn active_window() -> (Option<String>, Option<String>) {
-    let (con, screen) = x11rb::connect(None).expect("Couldn't connect to X11 server");
+pub fn active_window(
+    con: &RustConnection,
+    screen: usize,
+    sys: &mut System,
+) -> (Option<String>, Option<String>) {
     let root = con.setup().roots[screen].root;
 
     let net_active_window = get_atom(&con, b"_NET_ACTIVE_WINDOW");
@@ -33,7 +36,7 @@ pub fn active_window() -> (Option<String>, Option<String>) {
     };
 
     let cmd = match get_wm_pid(&con, active_window) {
-        Some(pid) => get_cmd(pid),
+        Some(pid) => get_cmd(sys, pid),
         None => None,
     };
 
@@ -74,11 +77,11 @@ fn get_wm_pid(con: &RustConnection, active_window: u32) -> Option<i32> {
     None
 }
 
-fn get_cmd(pid: i32) -> Option<String> {
+fn get_cmd(sys: &mut System, pid: i32) -> Option<String> {
     if pid != 0 {
-        let mut sys = System::new_all();
-        sys.refresh_processes();
-        let process = sys.process(Pid::from(pid));
+        let pid = Pid::from(pid);
+        sys.refresh_process_specifics(pid, ProcessRefreshKind::new());
+        let process = sys.process(pid);
 
         if process.is_some() {
             return Some(process.unwrap().name().to_string());

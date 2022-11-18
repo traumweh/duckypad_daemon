@@ -66,8 +66,13 @@ pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidap
     Ok(())
 }
 
-pub fn next_profile(config: &Value) -> Option<u8> {
-    let (app_name, window_title) = x11::active_window();
+pub fn next_profile(
+    config: &Value,
+    con: &x11rb::rust_connection::RustConnection,
+    screen: usize,
+    sys: &mut sysinfo::System,
+) -> Option<u8> {
+    let (app_name, window_title) = x11::active_window(con, screen, sys);
     const ERR_STR: &str = "Malformed config JSON!";
 
     let config = config.as_object().expect(ERR_STR);

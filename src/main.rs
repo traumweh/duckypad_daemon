@@ -1,8 +1,8 @@
 use clap::Parser;
 use duckypad_daemon::{config_file, goto_profile, hid, next_profile, read_config};
 use notify::{watcher, DebouncedEvent::Write, RecursiveMode, Watcher};
-use std::sync::{mpsc::channel, Arc, Mutex};
-use std::thread;
+use std::sync::mpsc::{channel, TryRecvError};
+use sysinfo::{System, SystemExt};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -19,41 +19,19 @@ struct Args {
 fn main() {
     let args = Args::parse();
     let config_path = config_file(&args.config);
-    let config = Arc::new(Mutex::new(read_config(&config_path)));
-    let config_thread = Arc::clone(&config);
-
-    thread::spawn(move || {
-        let (tx, rx) = channel();
-        let mut watcher = watcher(tx, std::time::Duration::from_secs(10))
-            .expect("Failed to start config file watcher");
-        watcher
-            .watch(&config_path, RecursiveMode::NonRecursive)
-            .unwrap_or_else(|err| {
-                panic!(
-                    "Failed to watch file: '{}'\nGot error: {:?}",
-                    config_path.display(),
-                    err
-                )
-            });
-
-        loop {
-            match rx.recv() {
-                Ok(event) => {
-                    eprintln!("Received watcher event: {:?}", event);
-
-                    if let Write(_) = event {
-                        let mut config_lock = config_thread.lock().expect("Failed to lock mutex.");
-                        *config_lock = read_config(&config_path);
-                    }
-                }
-                Err(err) => panic!(
-                    "Failed to watch file: '{}'\nGot error: {:?}",
-                    config_path.display(),
-                    err
-                ),
-            }
-        }
-    });
+    let mut config = read_config(&config_path);
+    let (tx, rx) = channel();
+    let mut watcher = watcher(tx, std::time::Duration::from_secs(10))
+        .expect("Failed to start config file watcher");
+    watcher
+        .watch(&config_path, RecursiveMode::NonRecursive)
+        .unwrap_or_else(|err| {
+            panic!(
+                "Failed to watch file: '{}'\nGot error: {:?}",
+                config_path.display(),
+                err
+            )
+        });
 
     println!("duckypad daemon started!");
 
@@ -86,9 +64,16 @@ fn main() {
     }
 
     let mut prev_profile: Option<u8> = None;
+    let (con, screen) = x11rb::connect(None).expect("Couldn't connect to X11 server");
+    let mut sys = System::new_all();
+
+    const RECV_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+    const WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+    const COUNTER_RESET: std::time::Duration = std::time::Duration::from_secs(0);
+    let mut recv_counter = COUNTER_RESET;
 
     loop {
-        let profile = next_profile(&Arc::clone(&config).lock().expect("Failed to lock mutex."));
+        let profile = next_profile(&config, &con, screen, &mut sys);
 
         if profile.is_some()
             && (prev_profile.is_none() || profile.unwrap() != prev_profile.unwrap())
@@ -100,6 +85,24 @@ fn main() {
             }
         }
 
-        std::thread::sleep(std::time::Duration::from_millis(250));
+        recv_counter += WAIT_INTERVAL;
+        std::thread::sleep(WAIT_INTERVAL);
+
+        if recv_counter >= RECV_INTERVAL {
+            recv_counter = COUNTER_RESET;
+            match rx.try_recv() {
+                Ok(event) => {
+                    eprintln!("Received watcher event: {:?}", event);
+
+                    if let Write(_) = event {
+                        config = read_config(&config_path);
+                    }
+                }
+                Err(TryRecvError::Empty) => (),
+                Err(TryRecvError::Disconnected) => {
+                    panic!("Failed to watch file: '{}'", config_path.display(),)
+                }
+            };
+        }
     }
 }
