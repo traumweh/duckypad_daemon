@@ -27,9 +27,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "cc"
-version = "1.0.73"
+version = "1.0.76"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fff2a6927b3bb87f9595d67196a70493f627687a71d87a0d692242c33f58c11"
+checksum = "76a284da2e6fe2092f2353e51713435363112dfd60030e22add80be333fb928f"
 
 [[package]]
 name = "cfg-if"
@@ -45,9 +45,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clap"
-version = "4.0.18"
+version = "4.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "335867764ed2de42325fafe6d18b8af74ba97ee0c590fa016f157535b42ab04b"
+checksum = "2148adefda54e14492fb9bddcc600b4344c5d1a3123bd666dcb939c6f0e0e57e"
 dependencies = [
  "atty",
  "bitflags",
@@ -60,9 +60,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.0.18"
+version = "4.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16a1b0f6422af32d5da0c58e2703320f379216ee70198241c84173a8c5ac28f3"
+checksum = "0177313f9f02afc995627906bbd8967e2be069f5261954222dac78290c2b9014"
 dependencies = [
  "heck",
  "proc-macro-error",
@@ -253,13 +253,14 @@ dependencies = [
 
 [[package]]
 name = "hidapi"
-version = "1.4.2"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d26e1151deaab68f34fbfd16d491a2a0170cf98d69d3efa23873b567a4199e1"
+checksum = "798154e4b6570af74899d71155fb0072d5b17e6aa12f39c8ef22c60fb8ec99e7"
 dependencies = [
  "cc",
  "libc",
  "pkg-config",
+ "winapi 0.3.9",
 ]
 
 [[package]]
@@ -432,9 +433,9 @@ dependencies = [
 
 [[package]]
 name = "num_cpus"
-version = "1.13.1"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19e64526ebdee182341572e50e9ad03965aa510cd94427a4549448f285e957a1"
+checksum = "f6058e64324c71e02bc2b150e4f3bc8286db6c83092132ffa3f6b1eab0f9def5"
 dependencies = [
  "hermit-abi",
  "libc",
@@ -442,15 +443,15 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.15.0"
+version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e82dad04139b71a90c080c8463fe0dc7902db5192d939bd0950f074d014339e1"
+checksum = "86f0b0d4bf799edbc74508c1e8bf170ff5f41238e5f8225603ca7caaae2b7860"
 
 [[package]]
 name = "os_str_bytes"
-version = "6.3.1"
+version = "6.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3baf96e39c5359d2eb0dd6ccb42c62b91d9678aa68160d261b9e0ccbf9e9dea9"
+checksum = "7b5bf27447411e9ee3ff51186bf7a08e16c341efdde93f4d823e8844429bed7e"
 
 [[package]]
 name = "pkg-config"
@@ -573,9 +574,9 @@ checksum = "d193d69bae983fc11a79df82342761dfbf28a99fc8d203dca4c3c1b590948965"
 
 [[package]]
 name = "serde_json"
-version = "1.0.87"
+version = "1.0.88"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ce777b7b150d76b9cf60d28b55f5847135a003f7d7350c6be7a773508ce7d45"
+checksum = "8e8b3801309262e8184d9687fb697586833e939767aea0dda89f5a8e650e8bd7"
 dependencies = [
  "itoa",
  "ryu",
@@ -610,9 +611,9 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.26.6"
+version = "0.26.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6d0dedf2e65d25b365c588382be9dc3a3ee4b0ed792366cf722d174c359d948"
+checksum = "c375d5fd899e32847b8566e10598d6e9f1d9b55ec6de3cdf9e7da4bdc51371bc"
 dependencies = [
  "cfg-if 1.0.0",
  "core-foundation-sys",
