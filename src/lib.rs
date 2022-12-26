@@ -72,7 +72,7 @@ pub fn next_profile(
     screen: usize,
     sys: &mut sysinfo::System,
 ) -> Option<u8> {
-    let (app_name, window_title) = x11::active_window(con, screen, sys);
+    let (app_name, window_class, window_title) = x11::active_window(con, screen, sys);
     const ERR_STR: &str = "Malformed config JSON!";
 
     let config = config.as_object().expect(ERR_STR);
@@ -98,12 +98,20 @@ pub fn next_profile(
             let mut correct_app_name = rule_app_name.len() == 0;
 
             if let Some(app_name) = &app_name {
-                correct_app_name |= app_name.contains(
-                    item.get("app_name")
-                        .expect(ERR_STR)
-                        .as_str()
-                        .expect(ERR_STR),
-                );
+                correct_app_name |= app_name.contains(rule_app_name);
+            }
+
+            // NEW *OPTIONAL* CONFIG FIELD
+            let rule_window_class = item.get("window_class");
+            let mut correct_window_class = rule_window_class.is_none();
+
+            if let Some(rule_window_class) = rule_window_class {
+                let rule_window_class = rule_window_class.as_str().expect(ERR_STR);
+                correct_window_class |= rule_window_class.len() == 0;
+
+                if let Some(window_class) = &window_class {
+                    correct_window_class |= window_class.contains(rule_window_class);
+                }
             }
 
             let rule_window_title = item
@@ -115,15 +123,10 @@ pub fn next_profile(
             let mut correct_window_title = rule_window_title.len() == 0;
 
             if let Some(window_title) = &window_title {
-                correct_window_title = window_title.contains(
-                    item.get("window_title")
-                        .expect(ERR_STR)
-                        .as_str()
-                        .expect(ERR_STR),
-                );
+                correct_window_title |= window_title.contains(rule_window_title);
             }
 
-            if correct_app_name && correct_window_title {
+            if correct_app_name && correct_window_class && correct_window_title {
                 let profile = item
                     .get("switch_to")
                     .expect(ERR_STR)

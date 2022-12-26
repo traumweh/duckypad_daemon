@@ -1,5 +1,6 @@
 use sysinfo::{Pid, ProcessExt, ProcessRefreshKind, System, SystemExt};
 use x11rb::connection::Connection;
+use x11rb::properties::WmClass;
 use x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt};
 use x11rb::rust_connection::RustConnection;
 
@@ -7,7 +8,7 @@ pub fn active_window(
     con: &RustConnection,
     screen: usize,
     sys: &mut System,
-) -> (Option<String>, Option<String>) {
+) -> (Option<String>, Option<String>, Option<String>) {
     let root = con.setup().roots[screen].root;
 
     let net_active_window = get_atom(&con, b"_NET_ACTIVE_WINDOW");
@@ -23,7 +24,7 @@ pub fn active_window(
         let tmp = active_window.value32().expect("Invalid message.").next();
 
         if tmp.is_none() {
-            return (None, None);
+            return (None, None, None);
         }
 
         tmp.unwrap()
@@ -40,7 +41,25 @@ pub fn active_window(
         None => None,
     };
 
-    (cmd, get_wm_name(&con, active_window))
+    (
+        cmd,
+        get_wm_class(&con, active_window),
+        get_wm_name(&con, active_window),
+    )
+}
+
+fn get_wm_class(con: &RustConnection, active_window: u32) -> Option<String> {
+    let wm_class = WmClass::get(con, active_window);
+
+    if let Ok(wm_class) = wm_class {
+        if let Ok(Some(wm_class)) = wm_class.reply_unchecked() {
+            if let Ok(class) = std::str::from_utf8(wm_class.class()) {
+                return Some(class.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 fn get_wm_name(con: &RustConnection, active_window: u32) -> Option<String> {
