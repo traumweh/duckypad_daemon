@@ -1,14 +1,57 @@
-use sysinfo::{Pid, ProcessExt, ProcessRefreshKind, System, SystemExt};
+use sysinfo::{Pid, ProcessExt, ProcessRefreshKind, SystemExt};
 use x11rb::connection::Connection;
 use x11rb::properties::WmClass;
 use x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt};
-use x11rb::rust_connection::RustConnection;
 
-pub fn active_window(
-    con: &RustConnection,
-    screen: usize,
-    sys: &mut System,
-) -> (Option<String>, Option<String>, Option<String>) {
+pub type RustConnection = x11rb::rust_connection::RustConnection;
+pub type System = sysinfo::System;
+
+#[allow(dead_code)]
+/// Represents the command, wm_class and wm_name of a window.
+pub struct ActiveWindow {
+    pub cmd: Option<String>,
+    pub wm_class: Option<String>,
+    pub wm_name: Option<String>,
+}
+
+/// Returns a connection to the X11 server as well as the current system state.
+///
+/// # Examples
+///
+/// ```
+/// let ((con, screen), mut sys) = init();
+/// let window = active_window(&con, screen, &mut sys);
+/// ```
+pub fn init() -> ((RustConnection, usize), System) {
+    (
+        x11rb::connect(None).expect("Couldn't connect to X11 server"),
+        System::new_all(),
+    )
+}
+
+/// Returns the command, wm_class and wm_name of the currently active window of
+/// the X server. `con` and `sys` are supplied manually to enable reusing of
+/// existing connections and system states.
+///
+/// # Arguments
+///
+/// * `con` - A connection to the X server
+/// * `screen` - The screen of the X server
+/// * `sys` - System state
+///
+/// # Examples
+///
+/// ```
+/// let (con, screen) = x11rb::connect(None).expect("Couldn't connect to the X11 server");
+/// let mut sys = System::new_all();
+/// let window = active_window(&con, screen, &mut sys);
+/// ```
+///
+/// ```
+/// let ((con, screen), mut sys) = init();
+/// let window = active_window(&con, screen, &mut sys);
+/// ```
+pub fn active_window(con: &RustConnection, screen: usize, sys: &mut System) -> ActiveWindow {
     let root = con.setup().roots[screen].root;
 
     let net_active_window = get_atom(&con, b"_NET_ACTIVE_WINDOW");
@@ -24,7 +67,11 @@ pub fn active_window(
         let tmp = active_window.value32().expect("Invalid message.").next();
 
         if tmp.is_none() {
-            return (None, None, None);
+            return ActiveWindow {
+                cmd: None,
+                wm_class: None,
+                wm_name: None,
+            };
         }
 
         tmp.unwrap()
@@ -41,11 +88,11 @@ pub fn active_window(
         None => None,
     };
 
-    (
+    ActiveWindow {
         cmd,
-        get_wm_class(&con, active_window),
-        get_wm_name(&con, active_window),
-    )
+        wm_class: get_wm_class(&con, active_window),
+        wm_name: get_wm_name(&con, active_window),
+    }
 }
 
 fn get_wm_class(con: &RustConnection, active_window: u32) -> Option<String> {

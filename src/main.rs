@@ -1,8 +1,9 @@
+pub mod x11;
+
 use clap::Parser;
 use duckypad_daemon::{config_file, goto_profile, hid, next_profile, read_config};
 use notify::{watcher, DebouncedEvent::Write, RecursiveMode, Watcher};
 use std::sync::mpsc::{channel, TryRecvError};
-use sysinfo::{System, SystemExt};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -64,8 +65,7 @@ fn main() {
     }
 
     let mut prev_profile: Option<u8> = None;
-    let (con, screen) = x11rb::connect(None).expect("Couldn't connect to X11 server");
-    let mut sys = System::new_all();
+    let ((con, screen), mut sys) = x11::init();
 
     const RECV_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
     const WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);

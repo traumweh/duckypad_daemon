@@ -2,17 +2,35 @@ pub mod hid;
 pub mod x11;
 
 use serde_json::Value;
-use std::fs::File;
-use std::io::prelude::*;
-use std::path::PathBuf;
+use std::{fs::File, io::prelude::Write, path::PathBuf};
+use x11::{active_window, RustConnection, System};
 
 fn create_default_config(path: &PathBuf) {
     eprintln!("Creating default config, because file doesn't exist");
-    let mut file = File::create(path).expect("Couldn't create config file!");
+    let mut file = File::create(path)
+        .unwrap_or_else(|error| panic!("Couldn't create config file:\n{}", error));
     file.write_all(b"{\"autoswitch_enabled\": false, \"rules_list\": []}")
         .expect("Couldn't write to config file!");
 }
 
+/// Returns a PathBuf for the config file path and creates a default config if
+/// no config file exists yet.
+///
+/// Default config path is XDG_CONFIG_DIR/duckypad_autoswitcher/config.txt
+///
+/// # Arguments
+///
+/// * `path` - Override directory in which the config file exists or should be created.
+///
+/// # Panics
+///
+/// The function will panic if `path`/config.txt isn't a file or couldn't be created.
+///
+/// # Examples
+///
+/// ```
+/// let config = config_file(None);
+/// ```
 pub fn config_file(path: &Option<String>) -> std::path::PathBuf {
     if let Some(config_path) = path {
         let config = PathBuf::from(config_path);
@@ -43,16 +61,34 @@ pub fn config_file(path: &Option<String>) -> std::path::PathBuf {
     config.unwrap()
 }
 
+/// Returns a serde Value object that represents the current contents of the
+/// configuration file.
+///
+/// # Arguments
+///
+/// * `path` - Path to the config file
+///
+/// # Examples
+///
+/// ```
+/// let config = read_config(config_file(None));
+/// ```
 pub fn read_config(path: &PathBuf) -> Value {
-    let file = std::fs::File::open(&path)
-        .unwrap_or_else(|_| panic!("Error reading file: '{}'", path.display()));
+    let file =
+        File::open(&path).unwrap_or_else(|error| panic!("Error reading config file:\n{}", error));
     let reader = std::io::BufReader::new(file);
     let json: Value = serde_json::from_reader(reader)
-        .unwrap_or_else(|_| panic!("Error parsing file as json: '{}'", path.display()));
+        .unwrap_or_else(|error| panic!("Error parsing config file as json:\n{}", error));
 
     json
 }
 
+/// Returns a Result that is either the unit () or a HidError.
+///
+/// # Arguments
+///
+/// * `device` - connected duckypad hid device
+/// * `profile` - id of the profile on the duckypad (1 <= id <= 31)
 pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidapi::HidError> {
     assert!(profile >= 1 && profile <= 31); // duckyPad limits
 
@@ -66,13 +102,22 @@ pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidap
     Ok(())
 }
 
+/// Returns the id of the profile to switch to based on the active X11 window
+/// and the config entries.
+///
+/// # Arguments
+///
+/// * `config` - serde Value of the current configuration
+/// * `con` - connection to the X11 server
+/// * `screen` - screen of the X11 server
+/// * `sys` - state of the system
 pub fn next_profile(
     config: &Value,
-    con: &x11rb::rust_connection::RustConnection,
+    con: &RustConnection,
     screen: usize,
-    sys: &mut sysinfo::System,
+    sys: &mut System,
 ) -> Option<u8> {
-    let (app_name, window_class, window_title) = x11::active_window(con, screen, sys);
+    let window = active_window(con, screen, sys);
     const ERR_STR: &str = "Malformed config JSON!";
 
     let config = config.as_object().expect(ERR_STR);
@@ -97,7 +142,7 @@ pub fn next_profile(
                 .expect(ERR_STR);
             let mut correct_app_name = rule_app_name.len() == 0;
 
-            if let Some(app_name) = &app_name {
+            if let Some(app_name) = &window.cmd {
                 correct_app_name |= app_name.contains(rule_app_name);
             }
 
@@ -109,7 +154,7 @@ pub fn next_profile(
                 let rule_window_class = rule_window_class.as_str().expect(ERR_STR);
                 correct_window_class |= rule_window_class.len() == 0;
 
-                if let Some(window_class) = &window_class {
+                if let Some(window_class) = &window.wm_class {
                     correct_window_class |= window_class.contains(rule_window_class);
                 }
             }
@@ -122,7 +167,7 @@ pub fn next_profile(
 
             let mut correct_window_title = rule_window_title.len() == 0;
 
-            if let Some(window_title) = &window_title {
+            if let Some(window_title) = &window.wm_name {
                 correct_window_title |= window_title.contains(rule_window_title);
             }
 
