@@ -1,26 +1,44 @@
 pub mod x11;
 
 use clap::Parser;
-use duckypad_daemon::{config_file, goto_profile, hid, next_profile, read_config};
+use duckypad_daemon::{config_file, hid, read_config, switch_profile};
 use notify::{watcher, DebouncedEvent::Write, RecursiveMode, Watcher};
-use std::sync::mpsc::{channel, TryRecvError};
+use std::{
+    path::PathBuf,
+    process::Command,
+    sync::mpsc::{channel, TryRecvError},
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Config file to use
+    /// Path to a config file to use
     #[arg(short, long, default_value = None)]
-    config: Option<String>,
+    config: Option<PathBuf>,
 
-    /// Wait for x seconds and retry if device isn't connected on daemon startup
+    /// Wait for <WAIT> seconds and retry if device isn't connected on daemon startup
     #[arg(short, long, default_value = None)]
     wait: Option<u64>,
+
+    /// Path to an executable to call when switching profile
+    /// CALLBACK -p <PROFILE> [-c <CMD>] [-w <WM_CLASS>] [-n <WM_NAME>]
+    #[arg(short = 'b', long, default_value = None, verbatim_doc_comment)]
+    callback: Option<PathBuf>,
 }
 
 fn main() {
     let args = Args::parse();
-    let config_path = config_file(&args.config);
+
+    // create Command without args or spawning to use in `run_callback` (lib.rs)
+    let mut callback = if let Some(callback) = args.callback {
+        Some(Command::new(callback))
+    } else {
+        None
+    };
+
+    let config_path = config_file(args.config);
     let mut config = read_config(&config_path);
+
     let (tx, rx) = channel();
     let mut watcher = watcher(tx, std::time::Duration::from_secs(10))
         .expect("Failed to start config file watcher");
@@ -73,17 +91,15 @@ fn main() {
     let mut recv_counter = COUNTER_RESET;
 
     loop {
-        let profile = next_profile(&config, &con, screen, &mut sys);
-
-        if profile.is_some()
-            && (prev_profile.is_none() || profile.unwrap() != prev_profile.unwrap())
-        {
-            if let Ok(duckypad) = hid::init(&api) {
-                if let Ok(_) = goto_profile(&duckypad, profile.unwrap()) {
-                    prev_profile = profile;
-                }
-            }
-        }
+        prev_profile = switch_profile(
+            &api,
+            &config,
+            &con,
+            screen,
+            &mut sys,
+            prev_profile,
+            &mut callback,
+        );
 
         recv_counter += WAIT_INTERVAL;
         std::thread::sleep(WAIT_INTERVAL);

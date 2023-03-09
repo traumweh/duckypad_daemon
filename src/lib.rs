@@ -1,9 +1,10 @@
 pub mod hid;
 pub mod x11;
 
+use hidapi::HidApi;
 use serde_json::Value;
-use std::{fs::File, io::prelude::Write, path::PathBuf};
-use x11::{active_window, RustConnection, System};
+use std::{fs::File, io::prelude::Write, path::PathBuf, process::Command};
+use x11::{active_window, ActiveWindow, RustConnection, System};
 
 fn create_default_config(path: &PathBuf) {
     eprintln!("Creating default config, because file doesn't exist");
@@ -31,10 +32,8 @@ fn create_default_config(path: &PathBuf) {
 /// ```
 /// let config = config_file(None);
 /// ```
-pub fn config_file(path: &Option<String>) -> std::path::PathBuf {
-    if let Some(config_path) = path {
-        let config = PathBuf::from(config_path);
-
+pub fn config_file(path: Option<PathBuf>) -> PathBuf {
+    if let Some(config) = path {
         if !config.exists() {
             create_default_config(&config);
         }
@@ -83,6 +82,74 @@ pub fn read_config(path: &PathBuf) -> Value {
     json
 }
 
+/// Switches to the next profile if it is different from the previous one and
+/// returns it.
+///
+/// # Arguments
+///
+/// * `api` - valid api connection
+/// * `device` - connected duckypad hid device
+/// * `profile` - id of the profile on the duckypad (1 <= id <= 31)
+/// * `callback` - optional command to spawn
+pub fn switch_profile(
+    api: &HidApi,
+    config: &Value,
+    con: &RustConnection,
+    screen: usize,
+    sys: &mut System,
+    prev_profile: Option<u8>,
+    callback: &mut Option<Command>,
+) -> Option<u8> {
+    let window = active_window(con, screen, sys);
+    let profile = next_profile(&config, &window);
+
+    if let Some(profile) = profile {
+        if prev_profile.is_none() || profile != prev_profile.unwrap() {
+            if let Ok(duckypad) = hid::init(&api) {
+                if let Ok(_) = goto_profile(&duckypad, profile) {
+                    if let Some(callback) = callback {
+                        run_callback(callback, profile, window);
+                    }
+                    return Some(profile);
+                }
+            }
+        }
+    }
+
+    prev_profile
+}
+
+/// Runs a callback executable if `callback.is_some()` by spawning a child with
+/// the following arguments:
+/// ```
+/// -p <PROFILE> [-c <CMD>] [-w <WM_CLASS>] [-n <WM_NAME>]
+/// ```
+/// The placeholder `"N/A"` will be supplied if either of `<cmd>`, `<wm_class>`
+/// or `<wm_name>` couldn't be determined.
+///
+/// # Arguments
+///
+/// * `callback` - optional callback script to run on change
+/// * `profile` - id of the profile on the duckypad (1 <= id <= 31)
+/// * `window` - information about the active window
+pub fn run_callback(callback: &mut Command, profile: u8, window: ActiveWindow) -> () {
+    let mut callback = callback.arg("-p").arg(profile.to_string());
+
+    if let Some(cmd) = window.cmd {
+        callback = callback.arg("-c").arg(cmd);
+    }
+    if let Some(wm_class) = window.wm_class {
+        callback = callback.arg("-w").arg(wm_class);
+    }
+    if let Some(wm_name) = window.wm_name {
+        callback = callback.arg("-n").arg(wm_name);
+    }
+
+    if let Err(err) = callback.spawn() {
+        eprintln!("Failed to run callback: {}", err);
+    }
+}
+
 /// Returns a Result that is either the unit () or a HidError.
 ///
 /// # Arguments
@@ -108,16 +175,8 @@ pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidap
 /// # Arguments
 ///
 /// * `config` - serde Value of the current configuration
-/// * `con` - connection to the X11 server
-/// * `screen` - screen of the X11 server
-/// * `sys` - state of the system
-pub fn next_profile(
-    config: &Value,
-    con: &RustConnection,
-    screen: usize,
-    sys: &mut System,
-) -> Option<u8> {
-    let window = active_window(con, screen, sys);
+/// * `window` - information about the active window
+pub fn next_profile(config: &Value, window: &ActiveWindow) -> Option<u8> {
     const ERR_STR: &str = "Malformed config JSON!";
 
     let config = config.as_object().expect(ERR_STR);
