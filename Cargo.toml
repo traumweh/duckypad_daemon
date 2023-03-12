@@ -4,6 +4,8 @@ description = "An profile autoswitcher daemon for dekuNukem's duckypad"
 version = "0.1.0"
 authors = ["traumweh <contact@traumweh.dev>"]
 repository = "https://github.com/traumweh/duckypad_daemon"
+homepage = "https://traumweh.dev"
+readme = "README.md"
 edition = "2021"
 license = "Apache-2.0"
 
