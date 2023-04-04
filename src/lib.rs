@@ -160,9 +160,9 @@ pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidap
     assert!(profile >= 1 && profile <= 31); // duckyPad limits
 
     println!("Switching to profile {}", profile);
-    let mut buf = [0; hid::PC_TO_DUCKYPAD_HID_BUF_SIZE];
-    buf[0] = 5;
-    buf[2] = 1;
+    let mut buf = [0x00; hid::PC_TO_DUCKYPAD_HID_BUF_SIZE];
+    buf[0] = 0x05;
+    buf[2] = 0x01;
     buf[3] = profile;
 
     let _ = hid::write(device, buf)?;

@@ -29,25 +29,28 @@ pub fn init(api: &HidApi) -> Result<HidDevice, HidError> {
 ///
 /// * `device` - connected duckypad hid device
 pub fn info(device: &HidDevice) -> Result<DuckyPadInfo, HidError> {
-    let mut buf = [0; PC_TO_DUCKYPAD_HID_BUF_SIZE];
-    buf[0] = 5;
+    let model = device
+        .get_product_string()
+        .unwrap_or_else(|_| Some("unknown".to_string()))
+        .unwrap_or_else(|| "unknown".to_string());
+    let serial = device
+        .get_serial_number_string()
+        .unwrap_or_else(|_| Some("unknown".to_string()))
+        .unwrap_or_else(|| "unknown".to_string());
 
-    let _ = write(device, buf)?;
-    let mut firmware: String = buf[3].to_string();
-    firmware.push('.');
-    firmware.push_str(&buf[4].to_string());
-    firmware.push('.');
-    firmware.push_str(&buf[5].to_string());
+    let mut buf = [0x00; PC_TO_DUCKYPAD_HID_BUF_SIZE];
+    buf[0] = 0x05;
+    let firmware = match write(device, buf) {
+        Ok(opt) => match opt {
+            Some(buffer) => format!("{}.{}.{}", buffer[3], buffer[4], buffer[5]),
+            None => "unknown".to_string(),
+        },
+        Err(_) => "unknown".to_string(),
+    };
 
     Ok(DuckyPadInfo {
-        model: device
-            .get_product_string()
-            .unwrap_or_else(|_| Some("unknown".to_string()))
-            .unwrap_or_else(|| "unknown".to_string()),
-        serial: device
-            .get_serial_number_string()
-            .unwrap_or_else(|_| Some("unknown".to_string()))
-            .unwrap_or_else(|| "unknown".to_string()),
+        model,
+        serial,
         firmware,
     })
 }
@@ -63,7 +66,7 @@ pub fn read(device: &HidDevice) -> Result<Option<[u8; DUCKYPAD_TO_PC_HID_BUF_SIZ
     let timer = std::time::Instant::now();
 
     while timer.elapsed() <= std::time::Duration::from_secs(5) {
-        let mut buf = [0; DUCKYPAD_TO_PC_HID_BUF_SIZE];
+        let mut buf = [0x00; DUCKYPAD_TO_PC_HID_BUF_SIZE];
         let res = device.read(&mut buf[..])?;
 
         if res > 0 {
