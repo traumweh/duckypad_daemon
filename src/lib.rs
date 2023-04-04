@@ -1,16 +1,34 @@
 pub mod hid;
-pub mod x11;
 
+use active_win_pos_rs::{get_active_window, ActiveWindow, WindowPosition};
 use hidapi::HidApi;
 use serde_json::Value;
-use std::{fs::File, io::prelude::Write, path::PathBuf, process::Command};
-use x11::{active_window, ActiveWindow, RustConnection, System};
+use std::{
+    fs::File,
+    io::prelude::Write,
+    path::PathBuf,
+    process::{Command, Stdio},
+};
+
+pub mod enums {
+    pub enum LinuxServer {
+        WAYLAND(std::path::PathBuf),
+        XORG,
+    }
+
+    pub enum OSIdent {
+        MACOS,
+        WINDOWS,
+        LINUX(LinuxServer),
+        UNSUPPORTED,
+    }
+}
 
 fn create_default_config(path: &PathBuf) {
     eprintln!("Creating default config, because file doesn't exist");
     let mut file = File::create(path)
         .unwrap_or_else(|error| panic!("Couldn't create config file:\n{}", error));
-    file.write_all(b"{\"autoswitch_enabled\": false, \"rules_list\": []}")
+    file.write_all(b"[]")
         .expect("Couldn't write to config file!");
 }
 
@@ -45,19 +63,21 @@ pub fn config_file(path: Option<PathBuf>) -> PathBuf {
         return config;
     }
 
-    let xdg_dirs = xdg::BaseDirectories::with_prefix("duckypad_autoswitcher")
-        .expect("Failed to determine config location");
-    let config = xdg_dirs.find_data_file("config.txt");
+    const ERR_STR: &str = "Failed to determine config location";
+    let mut config = dirs_next::config_dir().expect(ERR_STR);
+    config.push("duckypad_daemon/config.json");
 
-    if config.is_none() {
-        let config_path = xdg_dirs
-            .place_data_file("config.txt")
-            .expect("Couldn't create config directory!");
-        create_default_config(&config_path);
-        return config_path;
+    if !config.exists() {
+        let parent = config.parent().expect(ERR_STR);
+
+        if !parent.exists() {
+            std::fs::create_dir_all(parent).expect(ERR_STR);
+        }
+
+        create_default_config(&config);
     }
 
-    config.unwrap()
+    config
 }
 
 /// Returns a serde Value object that represents the current contents of the
@@ -88,35 +108,94 @@ pub fn read_config(path: &PathBuf) -> Value {
 /// # Arguments
 ///
 /// * `api` - valid api connection
-/// * `device` - connected duckypad hid device
-/// * `profile` - id of the profile on the duckypad (1 <= id <= 31)
+/// * `config` - current configuration
+/// * `prev_profile` - id of the profile on the duckypad (1 <= id <= 31)
 /// * `callback` - optional command to spawn
+/// * `os` - enum value of the running operating system
 pub fn switch_profile(
     api: &HidApi,
     config: &Value,
-    con: &RustConnection,
-    screen: usize,
-    sys: &mut System,
     prev_profile: Option<u8>,
     callback: &mut Option<Command>,
+    os: &enums::OSIdent,
 ) -> Option<u8> {
-    let window = active_window(con, screen, sys);
-    let profile = next_profile(&config, &window);
+    let window = match os {
+        enums::OSIdent::UNSUPPORTED => panic!("You are running an unsupported OS!\n"),
+        enums::OSIdent::LINUX(enums::LinuxServer::WAYLAND(script)) => wayland_active_window(script),
+        _ => get_active_window(),
+    };
 
-    if let Some(profile) = profile {
-        if prev_profile.is_none() || profile != prev_profile.unwrap() {
-            if let Ok(duckypad) = hid::init(&api) {
-                if let Ok(_) = goto_profile(&duckypad, profile) {
-                    if let Some(callback) = callback {
-                        run_callback(callback, profile, window);
+    if let Ok(window) = window {
+        let profile = next_profile(&config, &window);
+
+        if let Some(profile) = profile {
+            if prev_profile.is_none() || profile != prev_profile.unwrap() {
+                if let Ok(duckypad) = hid::init(&api) {
+                    if let Ok(_) = goto_profile(&duckypad, profile) {
+                        if let Some(callback) = callback {
+                            run_callback(callback, profile, window);
+                        }
+                        return Some(profile);
                     }
-                    return Some(profile);
                 }
             }
         }
     }
 
     prev_profile
+}
+
+fn wayland_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
+    const ERR_STR: &str = "Malformed output from wayland-script!\n";
+    let output = Command::new(script).stdout(Stdio::piped()).output();
+
+    if let Ok(output) = output {
+        let raw = String::from_utf8(output.stdout).expect(ERR_STR);
+        let json: Value = serde_json::from_str(&raw).expect(ERR_STR);
+        let title = json
+            .get("title")
+            .expect(ERR_STR)
+            .as_str()
+            .expect(ERR_STR)
+            .to_string();
+        let process_name = json
+            .get("process_name")
+            .expect(ERR_STR)
+            .as_str()
+            .expect(ERR_STR)
+            .to_string();
+        let window_id = json
+            .get("window_id")
+            .unwrap_or(&Value::String("".to_string()))
+            .as_str()
+            .expect(ERR_STR)
+            .to_string();
+        let process_id = json
+            .get("process_id")
+            .expect(ERR_STR)
+            .as_u64()
+            .expect(ERR_STR);
+        let position = if let Some(pos) = json.get("position") {
+            let pos = pos.as_object().expect(ERR_STR);
+            let x = pos.get("x").expect(ERR_STR).as_f64().expect(ERR_STR);
+            let y = pos.get("y").expect(ERR_STR).as_f64().expect(ERR_STR);
+            let w = pos.get("w").expect(ERR_STR).as_f64().expect(ERR_STR);
+            let h = pos.get("h").expect(ERR_STR).as_f64().expect(ERR_STR);
+            WindowPosition::new(x, y, w, h)
+        } else {
+            WindowPosition::new(0.0, 0.0, 0.0, 0.0)
+        };
+        let active_window: ActiveWindow = ActiveWindow {
+            title,
+            process_name,
+            window_id,
+            process_id,
+            position,
+        };
+        return Ok(active_window);
+    }
+
+    Err(())
 }
 
 /// Runs a callback executable if `callback.is_some()` by spawning a child with
@@ -135,14 +214,11 @@ pub fn switch_profile(
 pub fn run_callback(callback: &mut Command, profile: u8, window: ActiveWindow) -> () {
     let mut callback = callback.arg("-p").arg(profile.to_string());
 
-    if let Some(cmd) = window.cmd {
-        callback = callback.arg("-c").arg(cmd);
+    if window.process_name != "" {
+        callback = callback.arg("-w").arg(window.process_name);
     }
-    if let Some(wm_class) = window.wm_class {
-        callback = callback.arg("-w").arg(wm_class);
-    }
-    if let Some(wm_name) = window.wm_name {
-        callback = callback.arg("-n").arg(wm_name);
+    if window.title != "" {
+        callback = callback.arg("-n").arg(window.title);
     }
 
     if let Err(err) = callback.spawn() {
@@ -160,9 +236,9 @@ pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidap
     assert!(profile >= 1 && profile <= 31); // duckyPad limits
 
     println!("Switching to profile {}", profile);
-    let mut buf = [0; hid::PC_TO_DUCKYPAD_HID_BUF_SIZE];
-    buf[0] = 5;
-    buf[2] = 1;
+    let mut buf = [0x00; hid::PC_TO_DUCKYPAD_HID_BUF_SIZE];
+    buf[0] = 0x05;
+    buf[2] = 0x01;
     buf[3] = profile;
 
     let _ = hid::write(device, buf)?;
@@ -179,14 +255,9 @@ pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidap
 pub fn next_profile(config: &Value, window: &ActiveWindow) -> Option<u8> {
     const ERR_STR: &str = "Malformed config JSON!";
 
-    let config = config.as_object().expect(ERR_STR);
-    let rules = config
-        .get("rules_list")
-        .expect(ERR_STR)
-        .as_array()
-        .expect(ERR_STR);
+    let config = config.as_array().expect(ERR_STR);
 
-    for item in rules.iter() {
+    for item in config.iter() {
         let item = item.as_object().expect(ERR_STR);
         if item
             .get("enabled")
@@ -194,43 +265,16 @@ pub fn next_profile(config: &Value, window: &ActiveWindow) -> Option<u8> {
             .as_bool()
             .expect(ERR_STR)
         {
-            let rule_app_name = item
-                .get("app_name")
+            let process_name = item
+                .get("process_name")
                 .expect(ERR_STR)
                 .as_str()
                 .expect(ERR_STR);
-            let mut correct_app_name = rule_app_name.len() == 0;
+            let title = item.get("title").expect(ERR_STR).as_str().expect(ERR_STR);
 
-            if let Some(app_name) = &window.cmd {
-                correct_app_name |= app_name.contains(rule_app_name);
-            }
-
-            // NEW *OPTIONAL* CONFIG FIELD
-            let rule_window_class = item.get("window_class");
-            let mut correct_window_class = rule_window_class.is_none();
-
-            if let Some(rule_window_class) = rule_window_class {
-                let rule_window_class = rule_window_class.as_str().expect(ERR_STR);
-                correct_window_class |= rule_window_class.len() == 0;
-
-                if let Some(window_class) = &window.wm_class {
-                    correct_window_class |= window_class.contains(rule_window_class);
-                }
-            }
-
-            let rule_window_title = item
-                .get("window_title")
-                .expect(ERR_STR)
-                .as_str()
-                .expect(ERR_STR);
-
-            let mut correct_window_title = rule_window_title.len() == 0;
-
-            if let Some(window_title) = &window.wm_name {
-                correct_window_title |= window_title.contains(rule_window_title);
-            }
-
-            if correct_app_name && correct_window_class && correct_window_title {
+            if (process_name.len() == 0 || window.process_name.contains(process_name))
+                && (title.len() == 0 || window.title.contains(title))
+            {
                 let profile = item
                     .get("switch_to")
                     .expect(ERR_STR)

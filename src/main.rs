@@ -1,9 +1,8 @@
-pub mod x11;
-
 use clap::Parser;
-use duckypad_daemon::{config_file, hid, read_config, switch_profile};
+use duckypad_daemon::{config_file, enums, hid, read_config, switch_profile};
 use notify::{watcher, DebouncedEvent::Write, RecursiveMode, Watcher};
 use std::{
+    env,
     path::PathBuf,
     process::Command,
     sync::mpsc::{channel, TryRecvError},
@@ -24,6 +23,11 @@ struct Args {
     /// CALLBACK -p <PROFILE> [-c <CMD>] [-w <WM_CLASS>] [-n <WM_NAME>]
     #[arg(short = 'b', long, default_value = None, verbatim_doc_comment)]
     callback: Option<PathBuf>,
+
+    /// Path to an executable to call periodically about wayland active window information
+    /// Output must be a JSON with keys: WM_CLASS, MW_NAME & PID
+    #[arg(short = 'y', long, default_value = None)]
+    wayland_script: Option<PathBuf>,
 }
 
 fn main() {
@@ -82,8 +86,26 @@ fn main() {
         );
     }
 
+    let os = match env::consts::OS {
+        "macos" => enums::OSIdent::MACOS,
+        "windows" => enums::OSIdent::WINDOWS,
+        "linux" => {
+            // if env::var("WAYLAND_DISPLAY").is_ok() {
+            if let Some(script) = args.wayland_script {
+                enums::OSIdent::LINUX(enums::LinuxServer::WAYLAND(script))
+            } else {
+                enums::OSIdent::LINUX(enums::LinuxServer::XORG)
+            }
+        }
+        _ => enums::OSIdent::UNSUPPORTED,
+    };
+
+    match &os {
+        enums::OSIdent::UNSUPPORTED => panic!("You are running an unsupported OS!\n"),
+        _ => (),
+    };
+
     let mut prev_profile: Option<u8> = None;
-    let ((con, screen), mut sys) = x11::init();
 
     const RECV_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
     const WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
@@ -91,15 +113,7 @@ fn main() {
     let mut recv_counter = COUNTER_RESET;
 
     loop {
-        prev_profile = switch_profile(
-            &api,
-            &config,
-            &con,
-            screen,
-            &mut sys,
-            prev_profile,
-            &mut callback,
-        );
+        prev_profile = switch_profile(&api, &config, prev_profile, &mut callback, &os);
 
         recv_counter += WAIT_INTERVAL;
         std::thread::sleep(WAIT_INTERVAL);
