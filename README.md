@@ -26,28 +26,30 @@ duckypad_daemon --wait x
 (For a list of commandline arguments use `duckypad_daemon --help`)
 
 ## Configuration File
-By default this daemon shares its config with the python GUI and therefore shares its location
-(`~/.local/share/duckypad_autoswitcher/config.txt`). But the daemon also supports extra features and might 
-over time move away from that config.
+With version 1.0.0 and forward the daemon does not share its config file with the python GUI anymore. 
+The default config location is in one of the following directories:
+- Linux: `$HOME/.config/duckypad_daemon/config.json` or `$XDG_CONFIG_HOME/duckypad_daemon/config.json`
+- Windows: `C:\Users\<your username>\AppData\Roaming\duckypad_daemon\config.json`
+- macOS: `$HOME/Library/Application Support/duckypad_daemon/config.json`
 
-The daemon has support for the following config fields:
-- `window_class` - X11 `WM_CLASS` property
-- `window_title` - X11 `_NET_WM_NAME` property
-- `app_name` - command of the window's process
+If no config exists, then the daemon will create one for you. It is structured like this:
+- A JSON array of JSON objects
+- Each object has the following keys
+  - `title` - The window title (on X11 this would be the value of the `_NET_WM_NAME` property)
+  - `process_name` - The name of the process (on X11 this would be the value of the `WM_CLASS` property)
+  - `enabled` - Whether the rule should be enabled 
+  - `switch_to` - The number of the profile on the duckypad to switch to
 
-The `window_class` field is useful in cases like flatpak applications, which are running inside sandboxing environments 
-like bubblewrap (`bwrap`), which would mask the `app_name` field.
+The daemon then checks for the first rule, which `title` and `process_name` values are contained
+inside the actual window title and process name of the active window. This way, one can specify a 
+fallback rule that is a sort of catch-all, by specifying an empty string for both the `title` and 
+the `process_name` fields.
 
-You should still be able to use the python GUI for configuration of `window_title` and `app_name` fields (not 
-`window_class`), but I recommend either stopping the daemon or setting `"autoswitch_enabled": false` / clicking on 
-`Profile Autoswitch: ACTIVE` in the GUI to prevent both applications from fighting over duckyPad communication.
+The daemon also detects write-events to the config file and will automatically reload it. This means that 
+new rules will apply with no restart of the daemon required but just by waiting a couple of seconds.
 
-If the config file doesn't exist, then the daemon will automatically create a blank config for you and will also 
-detect if you write to the config file (either manually or via the GUI) and will reload it automatically. 
-This means that new rules will apply with no restart of the daemon required but just by waiting a couple of seconds.
-
-If you want to use a different config file or use a different location simply run the daemon with the `-c, --config`
-option and pass a file-path (NOTE: not a directory path!) to it:
+If you want to use a different config file or use a different location simply run the daemon with the 
+`-c, --config` option and pass a file-path (NOTE: not a directory path!) to it:
 ```
 duckypad_daemon --config <config-file>
 ```
@@ -112,5 +114,6 @@ wm_name = args["n"]
 ```
 
 ## OS Support
-The daemon uses X11-specific features and is therefore - at least for now - limited to Linux systems running an
-X-server. If you are interested in adding support for other operating systems, then feel free to contribute!
+The daemon was originally developed with X11 in mind and will mainly be tested on a Linux system, but has built-in 
+support for Windows and macOS, with manual support for Linux with Wayland and other operating systems, as long as
+there is a way to create a custom script which can determine the required information of the active window.
