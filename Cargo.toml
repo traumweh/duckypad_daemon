@@ -16,3 +16,4 @@ active-win-pos-rs = "0.7"
 serde_json = "*"
 notify = "4.0.0"
 clap = { version = "4.0.18", features = ["derive"] }
+sysinfo = "0.28.4"
