@@ -70,50 +70,38 @@ The script then gets run with the following arguments:
 The brackets `[...]` indicate optional parameters which gets supplied only if such information exists for the active 
 window, so keep that in mind.
 
-### Example: POSIX Shell
-```sh
-#!/bin/sh
-profile=
-cmd=
-wm_class=
-wm_name=
+### Examples
+For examples take a look [here](https://github.com/traumweh/duckypad_daemon/tree/main/examples/callbacks).
 
-while getopts p:c:w:n: name
-do
-  case $name in
-  p)  profile="$OPTARG";;
-  c)  cmd="$OPTARG";;
-  w)  wm_class="$OPTARG";;
-  n)  wm_name="$OPTARG";;
-  ?)  printf "Usage: %s: [-p profile] [-c cmd] [-w wm_class] [-n wm_name]\n" $0
-      exit 2;;
-  esac
-done
-
-# ...
-```
-
-### Example: `python`
-```python
-#!/usr/bin/env python3
-import argparse
-
-parser = argparse.ArgumentParser()
-parser.add_argument("-p", type=int, help="new profile")
-parser.add_argument("-c", type=str, help="command of active window")
-parser.add_argument("-w", type=str, help="WM_CLASS of active window")
-parser.add_argument("-n", type=str, help="WM_NAME of active window")
-args = vars(parser.parse_args())
-
-profile = args["p"]
-cmd = args["c"]
-wm_class = args["w"]
-wm_name = args["n"]
-
-# ...
-```
-
-## OS Support
+## OS Support and Custom Scripts for Window Information
 The daemon was originally developed with X11 in mind and will mainly be tested on a Linux system, but has built-in 
 support for Windows and macOS, with manual support for Linux with Wayland and other operating systems, as long as
 there is a way to create a custom script which can determine the required information of the active window.
+
+The `-s, --window-script` option can be used to supply a path to an executable which provides the required information 
+about the currently active window in form of a JSON object of the following structure:
+```json
+{
+    "title": "...",
+    "process_name": "..."
+}
+```
+It can optionally contain more information that might have future purpose but will be ignored for now. A full JSON 
+object would look like this:
+```json
+{
+    "title": "...",
+    "process_name": "...",
+    "process_id": 0,
+    "window_id": "...",
+    "position":{
+         "x": 0.0,
+         "y": 0.0,
+         "w": 0.0,
+         "h": 0.0
+    }
+}
+```
+
+### Examples
+Example scripts can be found at [here](https://github.com/traumweh/duckypad_daemon/tree/main/examples/window-scripts).

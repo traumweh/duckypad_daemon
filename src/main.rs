@@ -20,13 +20,13 @@ struct Args {
     wait: Option<u64>,
 
     /// Path to an executable to call when switching profile
-    /// CALLBACK -p <PROFILE> [-c <CMD>] [-w <WM_CLASS>] [-n <WM_NAME>]
+    /// CALLBACK -p <PROFILE> [-t <TITLE>] [-n <PROCESS_NAME>]
     #[arg(short = 'b', long, default_value = None, verbatim_doc_comment)]
     callback: Option<PathBuf>,
 
     /// Path to an executable to call periodically about active window information on platforms without native APIs
     /// Output must be a JSON with keys: title & process_name
-    #[arg(short = 's', long, default_value = None)]
+    #[arg(short = 's', long, default_value = None, verbatim_doc_comment)]
     window_script: Option<PathBuf>,
 }
 

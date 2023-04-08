@@ -231,10 +231,8 @@ fn custom_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
 /// Runs a callback executable if `callback.is_some()` by spawning a child with
 /// the following arguments:
 /// ```
-/// -p <PROFILE> [-c <CMD>] [-w <WM_CLASS>] [-n <WM_NAME>]
+/// -p <PROFILE> [-t <TITLE>] [-n <PROCESS_NAME>]
 /// ```
-/// The placeholder `"N/A"` will be supplied if either of `<cmd>`, `<wm_class>`
-/// or `<wm_name>` couldn't be determined.
 ///
 /// # Arguments
 ///
@@ -244,11 +242,11 @@ fn custom_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
 pub fn run_callback(callback: &mut Command, profile: u8, window: ActiveWindow) -> () {
     let mut callback = callback.arg("-p").arg(profile.to_string());
 
-    if window.process_name != "" {
-        callback = callback.arg("-w").arg(window.process_name);
-    }
     if window.title != "" {
-        callback = callback.arg("-n").arg(window.title);
+        callback = callback.arg("-t").arg(window.title);
+    }
+    if window.process_name != "" {
+        callback = callback.arg("-n").arg(window.process_name);
     }
 
     if let Err(err) = callback.spawn() {
