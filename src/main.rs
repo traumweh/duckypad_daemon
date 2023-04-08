@@ -7,6 +7,7 @@ use std::{
     process::Command,
     sync::mpsc::{channel, TryRecvError},
 };
+use sysinfo::{ProcessRefreshKind, RefreshKind, System, SystemExt};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -20,7 +21,7 @@ struct Args {
     wait: Option<u64>,
 
     /// Path to an executable to call when switching profile
-    /// CALLBACK -p <PROFILE> [-t <TITLE>] [-n <PROCESS_NAME>]
+    /// CALLBACK -p <PROFILE> [-a <APP_NAME>] [-t <TITLE>] [-n <PROCESS_NAME>]
     #[arg(short = 'b', long, default_value = None, verbatim_doc_comment)]
     callback: Option<PathBuf>,
 
@@ -107,6 +108,14 @@ fn main() {
         }
     };
 
+    let mut sys = if System::IS_SUPPORTED {
+        Some(System::new_with_specifics(
+            RefreshKind::new().with_processes(ProcessRefreshKind::new()),
+        ))
+    } else {
+        None
+    };
+
     let mut prev_profile: Option<u8> = None;
 
     const RECV_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
@@ -115,7 +124,7 @@ fn main() {
     let mut recv_counter = COUNTER_RESET;
 
     loop {
-        prev_profile = switch_profile(&api, &config, prev_profile, &mut callback, &os);
+        prev_profile = switch_profile(&api, &mut sys, &config, prev_profile, &mut callback, &os);
 
         recv_counter += WAIT_INTERVAL;
         std::thread::sleep(WAIT_INTERVAL);

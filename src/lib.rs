@@ -9,6 +9,7 @@ use std::{
     path::PathBuf,
     process::{Command, Stdio},
 };
+use sysinfo::{Pid, ProcessExt, ProcessRefreshKind, System, SystemExt};
 
 pub mod enums {
     pub enum LinuxServer {
@@ -114,6 +115,7 @@ pub fn read_config(path: &PathBuf) -> Value {
 /// * `os` - enum value of the running operating system
 pub fn switch_profile(
     api: &HidApi,
+    sys: &mut Option<System>,
     config: &Value,
     prev_profile: Option<u8>,
     callback: &mut Option<Command>,
@@ -128,12 +130,15 @@ pub fn switch_profile(
     };
 
     if let Ok(window) = window {
-        if let Some(profile) = next_profile(&config, &window) {
+        let app_name = get_app_name(sys, Pid::from(window.process_id as usize))
+            .unwrap_or("unknown".to_string());
+
+        if let Some(profile) = next_profile(&config, &window, &app_name) {
             if prev_profile.is_none() || profile != prev_profile.unwrap() {
                 if let Ok(duckypad) = hid::init(&api) {
                     if let Ok(_) = goto_profile(&duckypad, profile) {
                         if let Some(callback) = callback {
-                            run_callback(callback, profile, window);
+                            run_callback(callback, profile, window, &app_name);
                         }
                         return Some(profile);
                     }
@@ -231,7 +236,7 @@ fn custom_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
 /// Runs a callback executable if `callback.is_some()` by spawning a child with
 /// the following arguments:
 /// ```
-/// -p <PROFILE> [-t <TITLE>] [-n <PROCESS_NAME>]
+/// -p <PROFILE> [-a <APP_NAME>] [-t <TITLE>] [-n <PROCESS_NAME>]
 /// ```
 ///
 /// # Arguments
@@ -239,9 +244,17 @@ fn custom_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
 /// * `callback` - optional callback script to run on change
 /// * `profile` - id of the profile on the duckypad (1 <= id <= 31)
 /// * `window` - information about the active window
-pub fn run_callback(callback: &mut Command, profile: u8, window: ActiveWindow) -> () {
+pub fn run_callback(
+    callback: &mut Command,
+    profile: u8,
+    window: ActiveWindow,
+    app_name: &String,
+) -> () {
     let mut callback = callback.arg("-p").arg(profile.to_string());
 
+    if app_name != "" {
+        callback = callback.arg("-a").arg(app_name);
+    }
     if window.title != "" {
         callback = callback.arg("-t").arg(window.title);
     }
@@ -252,6 +265,19 @@ pub fn run_callback(callback: &mut Command, profile: u8, window: ActiveWindow) -
     if let Err(err) = callback.spawn() {
         eprintln!("Failed to run callback: {}", err);
     }
+}
+
+fn get_app_name(sys: &mut Option<System>, pid: Pid) -> Option<String> {
+    if let Some(sys) = sys {
+        sys.refresh_process_specifics(pid, ProcessRefreshKind::new());
+        let process = sys.process(pid);
+
+        if let Some(process) = process {
+            return Some(process.name().to_string());
+        }
+    }
+
+    None
 }
 
 /// Returns a Result that is either the unit () or a HidError.
@@ -280,7 +306,7 @@ pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidap
 ///
 /// * `config` - serde Value of the current configuration
 /// * `window` - information about the active window
-pub fn next_profile(config: &Value, window: &ActiveWindow) -> Option<u8> {
+pub fn next_profile(config: &Value, window: &ActiveWindow, app_name: &String) -> Option<u8> {
     const ERR_STR: &str = "Malformed config JSON!";
 
     let config = config.as_array().expect(ERR_STR);
@@ -293,15 +319,21 @@ pub fn next_profile(config: &Value, window: &ActiveWindow) -> Option<u8> {
             .as_bool()
             .expect(ERR_STR)
         {
-            let process_name = item
+            let conf_process_name = item
                 .get("process_name")
                 .expect(ERR_STR)
                 .as_str()
                 .expect(ERR_STR);
-            let title = item.get("title").expect(ERR_STR).as_str().expect(ERR_STR);
+            let conf_title = item.get("title").expect(ERR_STR).as_str().expect(ERR_STR);
+            let conf_app_name = item
+                .get("app_name")
+                .expect(ERR_STR)
+                .as_str()
+                .expect(ERR_STR);
 
-            if (process_name.len() == 0 || window.process_name.contains(process_name))
-                && (title.len() == 0 || window.title.contains(title))
+            if (conf_process_name.len() == 0 || window.process_name.contains(conf_process_name))
+                && (conf_title.len() == 0 || window.title.contains(conf_title))
+                && (conf_app_name.len() == 0 || app_name.contains(conf_app_name))
             {
                 let profile = item
                     .get("switch_to")
