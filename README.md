@@ -35,15 +35,15 @@ The default config location is in one of the following directories:
 If no config exists, then the daemon will create one for you. It is structured like this:
 - A JSON array of JSON objects
 - Each object has the following keys
+  - `app_name` - The command or name of the application
   - `title` - The window title (on X11 this would be the value of the `_NET_WM_NAME` property)
-  - `process_name` - The name of the process (on X11 this would be the value of the `WM_CLASS` property)
+  - `process_name` - The name/category of the process (on X11 this would be the value of the `WM_CLASS` property)
   - `enabled` - Whether the rule should be enabled 
   - `switch_to` - The number of the profile on the duckypad to switch to
 
-The daemon then checks for the first rule, which `title` and `process_name` values are contained
-inside the actual window title and process name of the active window. This way, one can specify a 
-fallback rule that is a sort of catch-all, by specifying an empty string for both the `title` and 
-the `process_name` fields.
+The daemon then checks for the first rule of which the `app_name`, `title` and `process_name` values are contained
+inside the actual app name, window title and process name of the active window. This way, one can specify a 
+fallback rule that is a sort of catch-all, by specifying an empty string for all fields.
 
 The daemon also detects write-events to the config file and will automatically reload it. This means that 
 new rules will apply with no restart of the daemon required but just by waiting a couple of seconds.
@@ -56,8 +56,8 @@ duckypad_daemon --config <config-file>
 
 ## Callbacks
 The daemon has support for callbacks via the `-b, --callback` option. The option is used to pass the path of a script 
-to the daemon which gets called whenever the duckyPad profile changes. The script must be executable and, if it isn't 
-a binary, have a shebang (`#!`) as its first line to indicate how to run it:
+to the daemon which gets called whenever the duckyPad profile changes. The script must be executable and on systems 
+other than Windows must contain a shebang (`#!`, see below) if it isn't a binary.
 - `#!/bin/sh`
 - `#!/usr/bin/env bash`
 - `#!/usr/bin/env python3`
@@ -65,7 +65,7 @@ a binary, have a shebang (`#!`) as its first line to indicate how to run it:
 
 The script then gets run with the following arguments:
 ```
--p <PROFILE> [-c <COMMAND>] [-w <WM_CLASS>] [-n <WM_NAME>]
+-p <PROFILE> [-a <APP_NAME>] [-t <TITLE>] [-n <PROCESS_NAME>]
 ```
 The brackets `[...]` indicate optional parameters which gets supplied only if such information exists for the active 
 window, so keep that in mind.
