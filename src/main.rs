@@ -24,10 +24,10 @@ struct Args {
     #[arg(short = 'b', long, default_value = None, verbatim_doc_comment)]
     callback: Option<PathBuf>,
 
-    /// Path to an executable to call periodically about wayland active window information
-    /// Output must be a JSON with keys: WM_CLASS, MW_NAME & PID
-    #[arg(short = 'y', long, default_value = None)]
-    wayland_script: Option<PathBuf>,
+    /// Path to an executable to call periodically about active window information on platforms without native APIs
+    /// Output must be a JSON with keys: title & process_name
+    #[arg(short = 's', long, default_value = None)]
+    window_script: Option<PathBuf>,
 }
 
 fn main() {
@@ -90,19 +90,21 @@ fn main() {
         "macos" => enums::OSIdent::MACOS,
         "windows" => enums::OSIdent::WINDOWS,
         "linux" => {
-            // if env::var("WAYLAND_DISPLAY").is_ok() {
-            if let Some(script) = args.wayland_script {
+            if let Some(script) = args.window_script {
                 enums::OSIdent::LINUX(enums::LinuxServer::WAYLAND(script))
+            } else if env::var("WAYLAND_DISPLAY").is_ok() {
+                panic!("Wayland has no proper API for active window information. See --window-script,-s as well as the readme!")
             } else {
                 enums::OSIdent::LINUX(enums::LinuxServer::XORG)
             }
         }
-        _ => enums::OSIdent::UNSUPPORTED,
-    };
-
-    match &os {
-        enums::OSIdent::UNSUPPORTED => panic!("You are running an unsupported OS!\n"),
-        _ => (),
+        _ => {
+            if let Some(script) = args.window_script {
+                enums::OSIdent::UNSUPPORTED(script)
+            } else {
+                panic!("Unsupported platform: See --window-script,-s as well as the readme!")
+            }
+        }
     };
 
     let mut prev_profile: Option<u8> = None;

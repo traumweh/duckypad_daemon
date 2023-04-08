@@ -20,7 +20,7 @@ pub mod enums {
         MACOS,
         WINDOWS,
         LINUX(LinuxServer),
-        UNSUPPORTED,
+        UNSUPPORTED(std::path::PathBuf),
     }
 }
 
@@ -120,15 +120,15 @@ pub fn switch_profile(
     os: &enums::OSIdent,
 ) -> Option<u8> {
     let window = match os {
-        enums::OSIdent::UNSUPPORTED => panic!("You are running an unsupported OS!\n"),
-        enums::OSIdent::LINUX(enums::LinuxServer::WAYLAND(script)) => wayland_active_window(script),
+        enums::OSIdent::UNSUPPORTED(script)
+        | enums::OSIdent::LINUX(enums::LinuxServer::WAYLAND(script)) => {
+            custom_active_window(script)
+        }
         _ => get_active_window(),
     };
 
     if let Ok(window) = window {
-        let profile = next_profile(&config, &window);
-
-        if let Some(profile) = profile {
+        if let Some(profile) = next_profile(&config, &window) {
             if prev_profile.is_none() || profile != prev_profile.unwrap() {
                 if let Ok(duckypad) = hid::init(&api) {
                     if let Ok(_) = goto_profile(&duckypad, profile) {
@@ -145,7 +145,37 @@ pub fn switch_profile(
     prev_profile
 }
 
-fn wayland_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
+/// Gets information about the active window by calling a script that is passed
+/// via the --window-script,-s command-line option.
+/// The script must output a JSON object with the following structure (item
+/// order doesn't matter):
+/// ```json
+/// {
+///     "title": str,
+///     "process_name": str
+/// }
+/// ```
+/// It can optionally contain more information that might have future purpose
+/// but will be ignored for now. A full JSON object would look like this:
+/// ```json
+/// {
+///     "title": str,
+///     "process_name": str,
+///     "process_id": u64,
+///     "window_id": str,
+///     "position":{
+///          "x": f64,
+///          "y": f64,
+///          "w": f64,
+///          "h": f64
+///     }
+/// }
+/// ```
+///
+/// # Arguments
+///
+/// * `script` - path of executable for custom window information
+fn custom_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
     const ERR_STR: &str = "Malformed output from wayland-script!\n";
     let output = Command::new(script).stdout(Stdio::piped()).output();
 
@@ -172,7 +202,7 @@ fn wayland_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
             .to_string();
         let process_id = json
             .get("process_id")
-            .expect(ERR_STR)
+            .unwrap_or(&Value::Number(serde_json::Number::from_f64(0.0).unwrap()))
             .as_u64()
             .expect(ERR_STR);
         let position = if let Some(pos) = json.get("position") {
