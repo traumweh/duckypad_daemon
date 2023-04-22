@@ -26,24 +26,28 @@ duckypad_daemon --wait x
 (For a list of commandline arguments use `duckypad_daemon --help`)
 
 ## Configuration File
-With version 1.0.0 and forward the daemon does not share its config file with the python GUI anymore. 
-The default config location is in one of the following directories:
+With version 1.0.0 and forward the daemon does not share its config file with the python GUI by default. 
+The default config location is now in one of the following directories:
 - Linux: `$HOME/.config/duckypad_daemon/config.json` or `$XDG_CONFIG_HOME/duckypad_daemon/config.json`
 - Windows: `C:\Users\<your username>\AppData\Roaming\duckypad_daemon\config.json`
 - macOS: `$HOME/Library/Application Support/duckypad_daemon/config.json`
+But one can still use `-c, --config` to use the config of the python-based autoswitcher, probably under on of the following locations:
+- Linux: `$HOME/.local/share/duckypad_autoswitcher/config.txt` or `$XDG_DATA_DIRS/duckypad_autoswitcher/config.txt`
+- Windows: `C:\Documents\duckypad_autoswitcher\config.txt`
+- macOS: `$HOME/Library/Application Support/duckypad_autoswitcher/config.txt`
 
 If no config exists, then the daemon will create one for you. It is structured like this:
-- A JSON array of JSON objects
+- A JSON object with an array field "rules_list" that is an array of JSON objects
 - Each object has the following keys
   - `app_name` - The command or name of the application
-  - `title` - The window title (on X11 this would be the value of the `_NET_WM_NAME` property)
-  - `process_name` - The name/category of the process (on X11 this would be the value of the `WM_CLASS` property)
+  - `title` (alias: `window_title`) - The window title (on X11 this would be the value of the `_NET_WM_NAME` property)
+  - `process_name` (optional) - The name/category of the process (on X11 this would be the value of the `WM_CLASS` property)
   - `enabled` - Whether the rule should be enabled 
   - `switch_to` - The number of the profile on the duckypad to switch to
 
-The daemon then checks for the first rule of which the `app_name`, `title` and `process_name` values are contained
-inside the actual app name, window title and process name of the active window. This way, one can specify a 
-fallback rule that is a sort of catch-all, by specifying an empty string for all fields.
+The daemon then checks for the first rule of which the `app_name`, `title` (`window_title`) and `process_name` values 
+are contained inside the actual app name, window title and process name of the active window. This way, one can 
+specify a fallback rule that is a sort of catch-all, by specifying an empty string for all fields.
 
 The daemon also detects write-events to the config file and will automatically reload it. This means that 
 new rules will apply with no restart of the daemon required but just by waiting a couple of seconds.
