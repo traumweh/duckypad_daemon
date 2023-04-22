@@ -64,15 +64,18 @@ pub fn config_file(path: Option<PathBuf>) -> PathBuf {
         return config;
     }
 
-    const ERR_STR: &str = "Failed to determine config location";
-    let mut config = dirs_next::config_dir().expect(ERR_STR);
+    let mut config = dirs_next::config_dir()
+        .expect("Unable to determine platform specific default for config files!");
     config.push("duckypad_daemon/config.json");
 
     if !config.exists() {
-        let parent = config.parent().expect(ERR_STR);
+        let parent = config
+            .parent()
+            .expect("Unable to get parent path of config directory!");
 
         if !parent.exists() {
-            std::fs::create_dir_all(parent).expect(ERR_STR);
+            std::fs::create_dir_all(parent)
+                .unwrap_or_else(|err| panic!("Unable to create config directory: {}", err));
         }
 
         create_default_config(&config);
@@ -181,41 +184,60 @@ pub fn switch_profile(
 ///
 /// * `script` - path of executable for custom window information
 fn custom_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
-    const ERR_STR: &str = "Malformed output from wayland-script!\n";
     let output = Command::new(script).stdout(Stdio::piped()).output();
 
     if let Ok(output) = output {
-        let raw = String::from_utf8(output.stdout).expect(ERR_STR);
-        let json: Value = serde_json::from_str(&raw).expect(ERR_STR);
+        let raw =
+            String::from_utf8(output.stdout).expect("Window script output needs to be valid utf8!");
+        let json: Value =
+            serde_json::from_str(&raw).expect("Window script needs to be a JSON object!");
         let title = json
             .get("title")
-            .expect(ERR_STR)
+            .expect("Window script output field \"title\" is missing!")
             .as_str()
-            .expect(ERR_STR)
+            .expect("Window script output field \"title\" needs to be a string!")
             .to_string();
         let process_name = json
             .get("process_name")
-            .expect(ERR_STR)
+            .expect("Window script output field \"process_name\" is missing!")
             .as_str()
-            .expect(ERR_STR)
+            .expect("Window script output field \"process_name\" needs to be a string!")
             .to_string();
         let window_id = json
             .get("window_id")
             .unwrap_or(&Value::String("".to_string()))
             .as_str()
-            .expect(ERR_STR)
+            .expect("Window script output field \"window_id\" needs to be a string!")
             .to_string();
         let process_id = json
             .get("process_id")
             .unwrap_or(&Value::Number(serde_json::Number::from_f64(0.0).unwrap()))
             .as_u64()
-            .expect(ERR_STR);
+            .expect("Window script output field \"process_id\" needs to be an unsigned int (u64)!");
         let position = if let Some(pos) = json.get("position") {
-            let pos = pos.as_object().expect(ERR_STR);
-            let x = pos.get("x").expect(ERR_STR).as_f64().expect(ERR_STR);
-            let y = pos.get("y").expect(ERR_STR).as_f64().expect(ERR_STR);
-            let w = pos.get("w").expect(ERR_STR).as_f64().expect(ERR_STR);
-            let h = pos.get("h").expect(ERR_STR).as_f64().expect(ERR_STR);
+            let pos = pos
+                .as_object()
+                .expect("Window script output field \"position\" needs to be a JSON array!");
+            let x = pos
+                .get("x")
+                .expect("Window script output field \"x\" is missing!")
+                .as_f64()
+                .expect("Window script output field \"x\" needs to be a float (f64)!");
+            let y = pos
+                .get("y")
+                .expect("Window script output field \"y\" is missing!")
+                .as_f64()
+                .expect("Window script output field \"y\" needs to be a float (f64)!");
+            let w = pos
+                .get("w")
+                .expect("Window script output field \"w\" is missing!")
+                .as_f64()
+                .expect("Window script output field \"w\" needs to be a float (f64)!");
+            let h = pos
+                .get("h")
+                .expect("Window script output field \"h\" is missing!")
+                .as_f64()
+                .expect("Window script output field \"h\" needs to be a float (f64)!");
             WindowPosition::new(x, y, w, h)
         } else {
             WindowPosition::new(0.0, 0.0, 0.0, 0.0)
@@ -307,29 +329,47 @@ pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidap
 /// * `config` - serde Value of the current configuration
 /// * `window` - information about the active window
 pub fn next_profile(config: &Value, window: &ActiveWindow, app_name: &String) -> Option<u8> {
-    const ERR_STR: &str = "Malformed config JSON!";
+    let config = config
+        .as_object()
+        .expect("Config needs to be a JSON object!");
+    let rules = config
+        .get("rules_list")
+        .expect("Config field \"rules_list\" is missing!")
+        .as_array()
+        .expect("Config field \"rules_list\" needs to be a JSON array!");
 
-    let config = config.as_array().expect(ERR_STR);
-
-    for item in config.iter() {
-        let item = item.as_object().expect(ERR_STR);
+    for item in rules.iter() {
+        let item = item
+            .as_object()
+            .expect("Config rules need tobe JSON objects!");
         if item
             .get("enabled")
-            .expect(ERR_STR)
+            .expect("Config rule field \"enabled\" is missing!")
             .as_bool()
-            .expect(ERR_STR)
+            .expect("Config rule field \"enabled\" needs to be a bool!")
         {
-            let conf_process_name = item
-                .get("process_name")
-                .expect(ERR_STR)
-                .as_str()
-                .expect(ERR_STR);
-            let conf_title = item.get("title").expect(ERR_STR).as_str().expect(ERR_STR);
+            let conf_process_name = match item.get("process_name") {
+                Some(value) => value
+                    .as_str()
+                    .expect("Config rule field \"process_name\" needs to be a string!"),
+                None => "",
+            };
+            let conf_title = match item.get("title") {
+                Some(value) => value
+                    .as_str()
+                    .expect("Config rule field \"title\" needs to be a string!"),
+                // Compatibility with python-based autoswitcher
+                None => item
+                    .get("window_title")
+                    .expect("Config rule field \"title\" (alias \"window_title\") is missing!")
+                    .as_str()
+                    .expect("Config rule field \"window_title\" needs to be a string!"),
+            };
             let conf_app_name = item
                 .get("app_name")
-                .expect(ERR_STR)
+                .expect("Config rule field \"app_name\" is missing!")
                 .as_str()
-                .expect(ERR_STR);
+                .expect("Config rule field \"app_name\" needs to be a string!");
 
             if (conf_process_name.len() == 0 || window.process_name.contains(conf_process_name))
                 && (conf_title.len() == 0 || window.title.contains(conf_title))
@@ -337,11 +377,15 @@ pub fn next_profile(config: &Value, window: &ActiveWindow, app_name: &String) ->
             {
                 let profile = item
                     .get("switch_to")
-                    .expect(ERR_STR)
+                    .expect("Config rule field \"switch_to\" is missing!")
                     .as_u64()
-                    .expect(ERR_STR);
+                    .expect("Config rule field \"switch_to\" needs to be an unsigned int (u8)!");
 
-                return Some(u8::try_from(profile).expect(ERR_STR));
+                return Some(
+                    u8::try_from(profile).expect(
+                        "Config rule field \"switch_to\" needs to be an unsigned int (u8)!",
+                    ),
+                );
             }
         }
     }
