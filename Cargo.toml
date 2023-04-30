@@ -10,10 +10,9 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
-hidapi = "1.4.2"
+hidapi = "2.2.2"
 dirs-next = "2.0.0"
 active-win-pos-rs = "0.7"
 serde_json = "*"
-notify = "4.0.0"
-clap = { version = "4.0.18", features = ["derive"] }
+clap = { version = "4.2.5", features = ["derive"] }
 sysinfo = "0.28.4"

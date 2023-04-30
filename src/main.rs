@@ -2,13 +2,7 @@
 
 use clap::Parser;
 use duckypad_daemon::{config_file, enums, hid, read_config, switch_profile};
-use notify::{watcher, DebouncedEvent::Write, RecursiveMode, Watcher};
-use std::{
-    env,
-    path::PathBuf,
-    process::Command,
-    sync::mpsc::{channel, TryRecvError},
-};
+use std::{env, path::PathBuf, process::Command};
 use sysinfo::{ProcessRefreshKind, RefreshKind, System, SystemExt};
 
 #[derive(Parser, Debug)]
@@ -33,10 +27,6 @@ struct Args {
     window_script: Option<PathBuf>,
 }
 
-const RECV_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
-const WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
-const COUNTER_RESET: std::time::Duration = std::time::Duration::from_secs(0);
-
 fn main() {
     let args = Args::parse();
 
@@ -44,22 +34,7 @@ fn main() {
     let mut callback = args.callback.map(Command::new);
 
     let config_path = config_file(args.config);
-    let mut config = read_config(&config_path);
-
-    let (tx, rx) = channel();
-    let mut watcher = watcher(tx, std::time::Duration::from_secs(10))
-        .expect("Failed to start config file watcher");
-    watcher
-        .watch(&config_path, RecursiveMode::NonRecursive)
-        .unwrap_or_else(|err| {
-            panic!(
-                "Failed to watch file: '{}'\nGot error: {:?}",
-                config_path.display(),
-                err
-            )
-        });
-
-    println!("duckypad daemon started!");
+    let config = read_config(&config_path);
 
     let api = hidapi::HidApi::new().expect("Failed to connect to HidApi.");
 
@@ -116,29 +91,9 @@ fn main() {
     };
 
     let mut prev_profile: Option<u8> = None;
-    let mut recv_counter = COUNTER_RESET;
 
     loop {
         prev_profile = switch_profile(&api, &mut sys, &config, prev_profile, &mut callback, &os);
-
-        recv_counter += WAIT_INTERVAL;
-        std::thread::sleep(WAIT_INTERVAL);
-
-        if recv_counter >= RECV_INTERVAL {
-            recv_counter = COUNTER_RESET;
-            match rx.try_recv() {
-                Ok(event) => {
-                    eprintln!("Received watcher event: {event:?}");
-
-                    if let Write(_) = event {
-                        config = read_config(&config_path);
-                    }
-                }
-                Err(TryRecvError::Empty) => (),
-                Err(TryRecvError::Disconnected) => {
-                    panic!("Failed to watch file: '{}'", config_path.display(),)
-                }
-            };
-        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
     }
 }

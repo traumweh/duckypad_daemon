@@ -49,9 +49,6 @@ The daemon then checks for the first rule of which the `app_name`, `title` (`win
 are contained inside the actual app name, window title and process name of the active window. This way, one can 
 specify a fallback rule that is a sort of catch-all, by specifying an empty string for all fields.
 
-The daemon also detects write-events to the config file and will automatically reload it. This means that 
-new rules will apply with no restart of the daemon required but just by waiting a couple of seconds.
-
 If you want to use a different config file or use a different location simply run the daemon with the 
 `-c, --config` option and pass a file-path (NOTE: not a directory path!) to it:
 ```
