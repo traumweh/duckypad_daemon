@@ -1,3 +1,6 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::must_use_candidate)]
+
 extern crate hidapi;
 use hidapi::{HidApi, HidDevice, HidError};
 
@@ -10,25 +13,29 @@ pub struct DuckyPadInfo {
 pub const PC_TO_DUCKYPAD_HID_BUF_SIZE: usize = 64;
 pub const DUCKYPAD_TO_PC_HID_BUF_SIZE: usize = 32;
 
-/// Returns a Result that is either the connected duckypad hid device or a
-/// HidError indicating something went wrong.
+/// Initializes a connection to the duckypad and returns an `HidDevice`.
 ///
 /// # Arguments
 ///
 /// * `api` - connection to the hid api
+///
+/// # Errors
+///
+/// Will return `HidError` if the duckypad `HidDevice` cannot be opened or
+/// set to non-blocking mode.
 pub fn init(api: &HidApi) -> Result<HidDevice, HidError> {
     let device = api.open(0x0483, 0xd11c)?;
     device.set_blocking_mode(false)?;
     Ok(device)
 }
 
-/// Returns a Result that either contains information about the connected
-/// duckypad or a HidError indicating something went wrong.
+/// Returns device and firmware information about the connected duckypad.
+/// Unavailable information will be replaced with "unknown".
 ///
 /// # Arguments
 ///
 /// * `device` - connected duckypad hid device
-pub fn info(device: &HidDevice) -> Result<DuckyPadInfo, HidError> {
+pub fn info(device: &HidDevice) -> DuckyPadInfo {
     let model = device
         .get_product_string()
         .unwrap_or_else(|_| Some("unknown".to_string()))
@@ -48,20 +55,24 @@ pub fn info(device: &HidDevice) -> Result<DuckyPadInfo, HidError> {
         Err(_) => "unknown".to_string(),
     };
 
-    Ok(DuckyPadInfo {
+    DuckyPadInfo {
         model,
         serial,
         firmware,
-    })
+    }
 }
 
 /// Returns a Result that either contains `DUCKYPAD_TO_PC_HID_BUF_SIZE` bytes
-/// (u8) read from the conencted duckypad or a HidError indicating something
+/// (u8) read from the conencted duckypad or a `HidError` indicating something
 /// went wrong.
 ///
 /// # Arguments
 ///
 /// * `device` - connected duckypad hid device
+///
+/// # Errors
+///
+/// Will return `HidError` if reading from the duckypad `HidDevice` fails.
 pub fn read(device: &HidDevice) -> Result<Option<[u8; DUCKYPAD_TO_PC_HID_BUF_SIZE]>, HidError> {
     let timer = std::time::Instant::now();
 
@@ -85,10 +96,15 @@ pub fn read(device: &HidDevice) -> Result<Option<[u8; DUCKYPAD_TO_PC_HID_BUF_SIZ
 ///
 /// * `device` - connected duckypad hid device
 /// * `buf` - `PC_TO_DUCKYPAD_HID_BUF_SIZE` bytes (u8) to write to `device`
+///
+/// # Errors
+///
+/// Will return `HidError` if writing to or the follow-up reading from the
+/// duckypad `HidDevice` fails.
 pub fn write(
     device: &HidDevice,
     buf: [u8; PC_TO_DUCKYPAD_HID_BUF_SIZE],
 ) -> Result<Option<[u8; DUCKYPAD_TO_PC_HID_BUF_SIZE]>, HidError> {
-    let _ = device.write(&buf)?;
+    device.write(&buf)?;
     read(device)
 }

@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 use clap::Parser;
 use duckypad_daemon::{config_file, enums, hid, read_config, switch_profile};
 use notify::{watcher, DebouncedEvent::Write, RecursiveMode, Watcher};
@@ -31,15 +33,15 @@ struct Args {
     window_script: Option<PathBuf>,
 }
 
+const RECV_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+const WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+const COUNTER_RESET: std::time::Duration = std::time::Duration::from_secs(0);
+
 fn main() {
     let args = Args::parse();
 
     // create Command without args or spawning to use in `run_callback` (lib.rs)
-    let mut callback = if let Some(callback) = args.callback {
-        Some(Command::new(callback))
-    } else {
-        None
-    };
+    let mut callback = args.callback.map(Command::new);
 
     let config_path = config_file(args.config);
     let mut config = read_config(&config_path);
@@ -68,10 +70,7 @@ fn main() {
                     break dev;
                 }
 
-                eprintln!(
-                    "Failed to connect to duckyPad. Retrying in {} seconds!",
-                    wait
-                );
+                eprintln!("Failed to connect to duckyPad. Retrying in {wait} seconds!");
                 std::thread::sleep(std::time::Duration::from_secs(wait));
             }
         } else {
@@ -80,7 +79,7 @@ fn main() {
             )
         };
 
-        let info = hid::info(&duckypad).expect("Failed to connect to duckyPad to retrieve device information. Maybe you are missing device permissions?");
+        let info = hid::info(&duckypad);
         println!(
             "Model: {}\tSerial: {}\tFirmware: {}",
             info.model, info.serial, info.firmware
@@ -117,10 +116,6 @@ fn main() {
     };
 
     let mut prev_profile: Option<u8> = None;
-
-    const RECV_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
-    const WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
-    const COUNTER_RESET: std::time::Duration = std::time::Duration::from_secs(0);
     let mut recv_counter = COUNTER_RESET;
 
     loop {
@@ -133,7 +128,7 @@ fn main() {
             recv_counter = COUNTER_RESET;
             match rx.try_recv() {
                 Ok(event) => {
-                    eprintln!("Received watcher event: {:?}", event);
+                    eprintln!("Received watcher event: {event:?}");
 
                     if let Write(_) = event {
                         config = read_config(&config_path);

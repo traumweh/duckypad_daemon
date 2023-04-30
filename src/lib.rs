@@ -1,3 +1,6 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::must_use_candidate)]
+
 pub mod hid;
 
 use active_win_pos_rs::{get_active_window, ActiveWindow, WindowPosition};
@@ -27,16 +30,16 @@ pub mod enums {
 
 fn create_default_config(path: &PathBuf) {
     eprintln!("Creating default config, because file doesn't exist");
-    let mut file = File::create(path)
-        .unwrap_or_else(|error| panic!("Couldn't create config file:\n{}", error));
+    let mut file =
+        File::create(path).unwrap_or_else(|error| panic!("Couldn't create config file:\n{error}"));
     file.write_all(b"[]")
         .expect("Couldn't write to config file!");
 }
 
-/// Returns a PathBuf for the config file path and creates a default config if
+/// Returns a `PathBuf` for the config file path and creates a default config if
 /// no config file exists yet.
 ///
-/// Default config path is XDG_CONFIG_DIR/duckypad_autoswitcher/config.txt
+/// Default config path is `XDG_CONFIG_DIR/duckypad_autoswitcher/config.txt`
 ///
 /// # Arguments
 ///
@@ -57,10 +60,7 @@ pub fn config_file(path: Option<PathBuf>) -> PathBuf {
             create_default_config(&config);
         }
 
-        if !config.is_file() {
-            panic!("Supplied config-path isn't a file!");
-        }
-
+        assert!(config.is_file(), "Supplied config-path isn't a file!");
         return config;
     }
 
@@ -75,7 +75,7 @@ pub fn config_file(path: Option<PathBuf>) -> PathBuf {
 
         if !parent.exists() {
             std::fs::create_dir_all(parent)
-                .unwrap_or_else(|err| panic!("Unable to create config directory: {}", err));
+                .unwrap_or_else(|err| panic!("Unable to create config directory: {err}"));
         }
 
         create_default_config(&config);
@@ -96,12 +96,17 @@ pub fn config_file(path: Option<PathBuf>) -> PathBuf {
 /// ```
 /// let config = read_config(config_file(None));
 /// ```
+///
+/// # Panics
+///
+/// This function will panic either if the config file at `path` cannot be read
+/// from or if it cannot be parsed as a JSON.
 pub fn read_config(path: &PathBuf) -> Value {
     let file =
-        File::open(&path).unwrap_or_else(|error| panic!("Error reading config file:\n{}", error));
+        File::open(path).unwrap_or_else(|error| panic!("Error reading config file:\n{error}"));
     let reader = std::io::BufReader::new(file);
     let json: Value = serde_json::from_reader(reader)
-        .unwrap_or_else(|error| panic!("Error parsing config file as json:\n{}", error));
+        .unwrap_or_else(|error| panic!("Error parsing config file as JSON:\n{error}"));
 
     json
 }
@@ -133,13 +138,17 @@ pub fn switch_profile(
     };
 
     if let Ok(window) = window {
+        #[allow(clippy::cast_possible_truncation)]
         let app_name = get_app_name(sys, Pid::from(window.process_id as usize))
             .unwrap_or("unknown".to_string());
 
-        if let Some(profile) = next_profile(&config, &window, &app_name) {
-            if prev_profile.is_none() || profile != prev_profile.unwrap() {
-                if let Ok(duckypad) = hid::init(&api) {
-                    if let Ok(_) = goto_profile(&duckypad, profile) {
+        if let Some(profile) = next_profile(config, &window, &app_name) {
+            if match prev_profile {
+                Some(prev_profile) => profile != prev_profile,
+                None => true,
+            } {
+                if let Ok(duckypad) = hid::init(api) {
+                    if goto_profile(&duckypad, profile).is_ok() {
                         if let Some(callback) = callback {
                             run_callback(callback, profile, window, &app_name);
                         }
@@ -205,7 +214,7 @@ fn custom_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
             .to_string();
         let window_id = json
             .get("window_id")
-            .unwrap_or(&Value::String("".to_string()))
+            .unwrap_or(&Value::String(String::new()))
             .as_str()
             .expect("Window script output field \"window_id\" needs to be a string!")
             .to_string();
@@ -266,26 +275,21 @@ fn custom_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
 /// * `callback` - optional callback script to run on change
 /// * `profile` - id of the profile on the duckypad (1 <= id <= 31)
 /// * `window` - information about the active window
-pub fn run_callback(
-    callback: &mut Command,
-    profile: u8,
-    window: ActiveWindow,
-    app_name: &String,
-) -> () {
+pub fn run_callback(callback: &mut Command, profile: u8, window: ActiveWindow, app_name: &String) {
     let mut callback = callback.arg("-p").arg(profile.to_string());
 
-    if app_name != "" {
+    if !app_name.is_empty() {
         callback = callback.arg("-a").arg(app_name);
     }
-    if window.title != "" {
+    if !window.title.is_empty() {
         callback = callback.arg("-t").arg(window.title);
     }
-    if window.process_name != "" {
+    if !window.process_name.is_empty() {
         callback = callback.arg("-n").arg(window.process_name);
     }
 
     if let Err(err) = callback.spawn() {
-        eprintln!("Failed to run callback: {}", err);
+        eprintln!("Failed to run callback: {err}");
     }
 }
 
@@ -302,22 +306,31 @@ fn get_app_name(sys: &mut Option<System>, pid: Pid) -> Option<String> {
     None
 }
 
-/// Returns a Result that is either the unit () or a HidError.
+/// Switch to the `profile` by sending a HID message to the duckypad.
 ///
 /// # Arguments
 ///
 /// * `device` - connected duckypad hid device
 /// * `profile` - id of the profile on the duckypad (1 <= id <= 31)
+///
+/// # Errors
+///
+/// Will return `HidError` if writing to or the follow-up reading from the
+/// duckypad `HidDevice` fails.
+///
+/// # Panics
+///
+/// The function will panic if `profile` is not a value in `(1..=31)`.
 pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidapi::HidError> {
-    assert!(profile >= 1 && profile <= 31); // duckyPad limits
+    assert!((1..=31).contains(&profile)); // duckyPad limits
 
-    println!("Switching to profile {}", profile);
+    println!("Switching to profile {profile}");
     let mut buf = [0x00; hid::PC_TO_DUCKYPAD_HID_BUF_SIZE];
     buf[0] = 0x05;
     buf[2] = 0x01;
     buf[3] = profile;
 
-    let _ = hid::write(device, buf)?;
+    hid::write(device, buf)?;
     Ok(())
 }
 
@@ -328,7 +341,7 @@ pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidap
 ///
 /// * `config` - serde Value of the current configuration
 /// * `window` - information about the active window
-pub fn next_profile(config: &Value, window: &ActiveWindow, app_name: &String) -> Option<u8> {
+pub fn next_profile(config: &Value, window: &ActiveWindow, app_name: &str) -> Option<u8> {
     let config = config
         .as_object()
         .expect("Config needs to be a JSON object!");
@@ -371,9 +384,9 @@ pub fn next_profile(config: &Value, window: &ActiveWindow, app_name: &String) ->
                 .as_str()
                 .expect("Config rule field \"app_name\" needs to be a string!");
 
-            if (conf_process_name.len() == 0 || window.process_name.contains(conf_process_name))
-                && (conf_title.len() == 0 || window.title.contains(conf_title))
-                && (conf_app_name.len() == 0 || app_name.contains(conf_app_name))
+            if (conf_process_name.is_empty() || window.process_name.contains(conf_process_name))
+                && (conf_title.is_empty() || window.title.contains(conf_title))
+                && (conf_app_name.is_empty() || app_name.contains(conf_app_name))
             {
                 let profile = item
                     .get("switch_to")
