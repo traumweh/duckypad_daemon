@@ -1,13 +1,9 @@
-pub mod x11;
+#![warn(clippy::pedantic)]
 
 use clap::Parser;
-use duckypad_daemon::{config_file, hid, read_config, switch_profile};
-use notify::{watcher, DebouncedEvent::Write, RecursiveMode, Watcher};
-use std::{
-    path::PathBuf,
-    process::Command,
-    sync::mpsc::{channel, TryRecvError},
-};
+use duckypad_daemon::{config_file, enums, hid, read_config, switch_profile};
+use std::{env, path::PathBuf, process::Command};
+use sysinfo::{ProcessRefreshKind, RefreshKind, System, SystemExt};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -21,38 +17,24 @@ struct Args {
     wait: Option<u64>,
 
     /// Path to an executable to call when switching profile
-    /// CALLBACK -p <PROFILE> [-c <CMD>] [-w <WM_CLASS>] [-n <WM_NAME>]
+    /// CALLBACK -p <PROFILE> [-a <APP_NAME>] [-t <TITLE>] [-n <PROCESS_NAME>]
     #[arg(short = 'b', long, default_value = None, verbatim_doc_comment)]
     callback: Option<PathBuf>,
+
+    /// Path to an executable to call periodically about active window information on platforms without native APIs
+    /// Output must be a JSON with keys: title & process_name
+    #[arg(short = 's', long, default_value = None, verbatim_doc_comment)]
+    window_script: Option<PathBuf>,
 }
 
 fn main() {
     let args = Args::parse();
 
     // create Command without args or spawning to use in `run_callback` (lib.rs)
-    let mut callback = if let Some(callback) = args.callback {
-        Some(Command::new(callback))
-    } else {
-        None
-    };
+    let mut callback = args.callback.map(Command::new);
 
     let config_path = config_file(args.config);
-    let mut config = read_config(&config_path);
-
-    let (tx, rx) = channel();
-    let mut watcher = watcher(tx, std::time::Duration::from_secs(10))
-        .expect("Failed to start config file watcher");
-    watcher
-        .watch(&config_path, RecursiveMode::NonRecursive)
-        .unwrap_or_else(|err| {
-            panic!(
-                "Failed to watch file: '{}'\nGot error: {:?}",
-                config_path.display(),
-                err
-            )
-        });
-
-    println!("duckypad daemon started!");
+    let config = read_config(&config_path);
 
     let api = hidapi::HidApi::new().expect("Failed to connect to HidApi.");
 
@@ -63,10 +45,7 @@ fn main() {
                     break dev;
                 }
 
-                eprintln!(
-                    "Failed to connect to duckyPad. Retrying in {} seconds!",
-                    wait
-                );
+                eprintln!("Failed to connect to duckyPad. Retrying in {wait} seconds!");
                 std::thread::sleep(std::time::Duration::from_secs(wait));
             }
         } else {
@@ -75,50 +54,46 @@ fn main() {
             )
         };
 
-        let info = hid::info(&duckypad).expect("Failed to connect to duckyPad to retrieve device information. Maybe you are missing device permissions?");
+        let info = hid::info(&duckypad);
         println!(
             "Model: {}\tSerial: {}\tFirmware: {}",
             info.model, info.serial, info.firmware
         );
     }
 
-    let mut prev_profile: Option<u8> = None;
-    let ((con, screen), mut sys) = x11::init();
+    let os = match env::consts::OS {
+        "macos" => enums::OSIdent::MACOS,
+        "windows" => enums::OSIdent::WINDOWS,
+        "linux" => {
+            if let Some(script) = args.window_script {
+                enums::OSIdent::LINUX(enums::LinuxServer::WAYLAND(script))
+            } else if env::var("WAYLAND_DISPLAY").is_ok() {
+                panic!("Wayland has no proper API for active window information. See --window-script,-s as well as the readme!")
+            } else {
+                enums::OSIdent::LINUX(enums::LinuxServer::XORG)
+            }
+        }
+        _ => {
+            if let Some(script) = args.window_script {
+                enums::OSIdent::UNSUPPORTED(script)
+            } else {
+                panic!("Unsupported platform: See --window-script,-s as well as the readme!")
+            }
+        }
+    };
 
-    const RECV_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
-    const WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
-    const COUNTER_RESET: std::time::Duration = std::time::Duration::from_secs(0);
-    let mut recv_counter = COUNTER_RESET;
+    let mut sys = if System::IS_SUPPORTED {
+        Some(System::new_with_specifics(
+            RefreshKind::new().with_processes(ProcessRefreshKind::new()),
+        ))
+    } else {
+        None
+    };
+
+    let mut prev_profile: Option<u8> = None;
 
     loop {
-        prev_profile = switch_profile(
-            &api,
-            &config,
-            &con,
-            screen,
-            &mut sys,
-            prev_profile,
-            &mut callback,
-        );
-
-        recv_counter += WAIT_INTERVAL;
-        std::thread::sleep(WAIT_INTERVAL);
-
-        if recv_counter >= RECV_INTERVAL {
-            recv_counter = COUNTER_RESET;
-            match rx.try_recv() {
-                Ok(event) => {
-                    eprintln!("Received watcher event: {:?}", event);
-
-                    if let Write(_) = event {
-                        config = read_config(&config_path);
-                    }
-                }
-                Err(TryRecvError::Empty) => (),
-                Err(TryRecvError::Disconnected) => {
-                    panic!("Failed to watch file: '{}'", config_path.display(),)
-                }
-            };
-        }
+        prev_profile = switch_profile(&api, &mut sys, &config, prev_profile, &mut callback, &os);
+        std::thread::sleep(std::time::Duration::from_millis(250));
     }
 }

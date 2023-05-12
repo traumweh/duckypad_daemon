@@ -26,36 +26,39 @@ duckypad_daemon --wait x
 (For a list of commandline arguments use `duckypad_daemon --help`)
 
 ## Configuration File
-By default this daemon shares its config with the python GUI and therefore shares its location
-(`~/.local/share/duckypad_autoswitcher/config.txt`). But the daemon also supports extra features and might 
-over time move away from that config.
+With version 1.0.0 and forward the daemon does not share its config file with the python GUI by default. 
+The default config location is now in one of the following directories:
+- Linux: `$HOME/.config/duckypad_daemon/config.json` or `$XDG_CONFIG_HOME/duckypad_daemon/config.json`
+- Windows: `C:\Users\<your username>\AppData\Roaming\duckypad_daemon\config.json`
+- macOS: `$HOME/Library/Application Support/duckypad_daemon/config.json`
+But one can still use `-c, --config` to use the config of the python-based autoswitcher, probably under on of the following locations:
+- Linux: `$HOME/.local/share/duckypad_autoswitcher/config.txt` or `$XDG_DATA_DIRS/duckypad_autoswitcher/config.txt`
+- Windows: `C:\Documents\duckypad_autoswitcher\config.txt`
+- macOS: `$HOME/Library/Application Support/duckypad_autoswitcher/config.txt`
 
-The daemon has support for the following config fields:
-- `window_class` - X11 `WM_CLASS` property
-- `window_title` - X11 `_NET_WM_NAME` property
-- `app_name` - command of the window's process
+If no config exists, then the daemon will create one for you. It is structured like this:
+- A JSON object with an array field "rules_list" that is an array of JSON objects
+- Each object has the following keys
+  - `app_name` - The command or name of the application
+  - `title` (alias: `window_title`) - The window title (on X11 this would be the value of the `_NET_WM_NAME` property)
+  - `process_name` (optional) - The name/category of the process (on X11 this would be the value of the `WM_CLASS` property)
+  - `enabled` - Whether the rule should be enabled 
+  - `switch_to` - The number of the profile on the duckypad to switch to
 
-The `window_class` field is useful in cases like flatpak applications, which are running inside sandboxing environments 
-like bubblewrap (`bwrap`), which would mask the `app_name` field.
+The daemon then checks for the first rule of which the `app_name`, `title` (`window_title`) and `process_name` values 
+are contained inside the actual app name, window title and process name of the active window. This way, one can 
+specify a fallback rule that is a sort of catch-all, by specifying an empty string for all fields.
 
-You should still be able to use the python GUI for configuration of `window_title` and `app_name` fields (not 
-`window_class`), but I recommend either stopping the daemon or setting `"autoswitch_enabled": false` / clicking on 
-`Profile Autoswitch: ACTIVE` in the GUI to prevent both applications from fighting over duckyPad communication.
-
-If the config file doesn't exist, then the daemon will automatically create a blank config for you and will also 
-detect if you write to the config file (either manually or via the GUI) and will reload it automatically. 
-This means that new rules will apply with no restart of the daemon required but just by waiting a couple of seconds.
-
-If you want to use a different config file or use a different location simply run the daemon with the `-c, --config`
-option and pass a file-path (NOTE: not a directory path!) to it:
+If you want to use a different config file or use a different location simply run the daemon with the 
+`-c, --config` option and pass a file-path (NOTE: not a directory path!) to it:
 ```
 duckypad_daemon --config <config-file>
 ```
 
 ## Callbacks
 The daemon has support for callbacks via the `-b, --callback` option. The option is used to pass the path of a script 
-to the daemon which gets called whenever the duckyPad profile changes. The script must be executable and, if it isn't 
-a binary, have a shebang (`#!`) as its first line to indicate how to run it:
+to the daemon which gets called whenever the duckyPad profile changes. The script must be executable and on systems 
+other than Windows must contain a shebang (`#!`, see below) if it isn't a binary.
 - `#!/bin/sh`
 - `#!/usr/bin/env bash`
 - `#!/usr/bin/env python3`
@@ -63,54 +66,43 @@ a binary, have a shebang (`#!`) as its first line to indicate how to run it:
 
 The script then gets run with the following arguments:
 ```
--p <PROFILE> [-c <COMMAND>] [-w <WM_CLASS>] [-n <WM_NAME>]
+-p <PROFILE> [-a <APP_NAME>] [-t <TITLE>] [-n <PROCESS_NAME>]
 ```
 The brackets `[...]` indicate optional parameters which gets supplied only if such information exists for the active 
 window, so keep that in mind.
 
-### Example: POSIX Shell
-```sh
-#!/bin/sh
-profile=
-cmd=
-wm_class=
-wm_name=
+### Examples
+For examples take a look [here](https://github.com/traumweh/duckypad_daemon/tree/main/examples/callbacks).
 
-while getopts p:c:w:n: name
-do
-  case $name in
-  p)  profile="$OPTARG";;
-  c)  cmd="$OPTARG";;
-  w)  wm_class="$OPTARG";;
-  n)  wm_name="$OPTARG";;
-  ?)  printf "Usage: %s: [-p profile] [-c cmd] [-w wm_class] [-n wm_name]\n" $0
-      exit 2;;
-  esac
-done
+## OS Support and Custom Scripts for Window Information
+The daemon was originally developed with X11 in mind and will mainly be tested on a Linux system, but has built-in 
+support for Windows and macOS, with manual support for Linux with Wayland and other operating systems, as long as
+there is a way to create a custom script which can determine the required information of the active window.
 
-# ...
+The `-s, --window-script` option can be used to supply a path to an executable which provides the required information 
+about the currently active window in form of a JSON object of the following structure:
+```json
+{
+    "title": "...",
+    "process_name": "..."
+}
+```
+It can optionally contain more information that might have future purpose but will be ignored for now. A full JSON 
+object would look like this:
+```json
+{
+    "title": "...",
+    "process_name": "...",
+    "process_id": 0,
+    "window_id": "...",
+    "position":{
+         "x": 0.0,
+         "y": 0.0,
+         "w": 0.0,
+         "h": 0.0
+    }
+}
 ```
 
-### Example: `python`
-```python
-#!/usr/bin/env python3
-import argparse
-
-parser = argparse.ArgumentParser()
-parser.add_argument("-p", type=int, help="new profile")
-parser.add_argument("-c", type=str, help="command of active window")
-parser.add_argument("-w", type=str, help="WM_CLASS of active window")
-parser.add_argument("-n", type=str, help="WM_NAME of active window")
-args = vars(parser.parse_args())
-
-profile = args["p"]
-cmd = args["c"]
-wm_class = args["w"]
-wm_name = args["n"]
-
-# ...
-```
-
-## OS Support
-The daemon uses X11-specific features and is therefore - at least for now - limited to Linux systems running an
-X-server. If you are interested in adding support for other operating systems, then feel free to contribute!
+### Examples
+Example scripts can be found at [here](https://github.com/traumweh/duckypad_daemon/tree/main/examples/window-scripts).

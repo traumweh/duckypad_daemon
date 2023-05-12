@@ -1,19 +1,18 @@
 [package]
 name = "duckypad_daemon"
 description = "A profile autoswitcher daemon for dekuNukem's duckypad"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["traumweh <contact@traumweh.dev>"]
 repository = "https://github.com/traumweh/duckypad_daemon"
-homepage = "https://traumweh.dev"
+homepage = "https://lilith.codes"
 readme = "README.md"
 edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+hidapi = "2.3.1"
+dirs-next = "2.0.0"
+active-win-pos-rs = "0.7"
 serde_json = "*"
-notify = "4.0.0"
-x11rb = "0.10.1"
-hidapi = "1.4.2"
-sysinfo = "0.26.0"
-xdg = "2.4.1"
-clap = { version = "4.0.18", features = ["derive"] }
+clap = { version = "4.2.5", features = ["derive"] }
+sysinfo = "0.28.4"
