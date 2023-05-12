@@ -10,7 +10,7 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
-hidapi = "2.2.2"
+hidapi = "2.3.1"
 dirs-next = "2.0.0"
 active-win-pos-rs = "0.7"
 serde_json = "*"

@@ -13,6 +13,11 @@ pub struct DuckyPadInfo {
 pub const PC_TO_DUCKYPAD_HID_BUF_SIZE: usize = 64;
 pub const DUCKYPAD_TO_PC_HID_BUF_SIZE: usize = 32;
 
+const VENDOR_ID: u16 = 0x0483;
+const PRODUCT_ID: u16 = 0xd11c;
+const USAGE_PAGE: u16 = 0x0001;
+const USAGE: u16 = 0x003a;
+
 /// Initializes a connection to the duckypad and returns an `HidDevice`.
 ///
 /// # Arguments
@@ -24,9 +29,27 @@ pub const DUCKYPAD_TO_PC_HID_BUF_SIZE: usize = 32;
 /// Will return `HidError` if the duckypad `HidDevice` cannot be opened or
 /// set to non-blocking mode.
 pub fn init(api: &HidApi) -> Result<HidDevice, HidError> {
-    let device = api.open(0x0483, 0xd11c)?;
-    device.set_blocking_mode(false)?;
-    Ok(device)
+    for item in api.device_list() {
+        if item.vendor_id() == VENDOR_ID
+            && item.product_id() == PRODUCT_ID
+            && item.usage_page() == USAGE_PAGE
+            && item.usage() == USAGE
+        {
+            let device = api.open_path(item.path())?;
+            device.set_blocking_mode(false)?;
+            return Ok(device);
+        }
+    }
+
+    Err(HidError::HidApiError {
+        message: format!(
+            "Couldn't find device: (\
+            vendor_id: {VENDOR_ID:#06x}, \
+            product_id: {PRODUCT_ID:#06x}, \
+            usage_page: {USAGE_PAGE:#06x}, \
+            usage: {USAGE:#06x}"
+        ),
+    })
 }
 
 /// Returns device and firmware information about the connected duckypad.
