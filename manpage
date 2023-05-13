@@ -1,0 +1,108 @@
+.TH "DUCKYPAD_DAEMON" "1" "May 13, 2023" "1.0.0" "duckypad_daemon"
+.SH NAME
+duckypad_daemon \- A profile autoswitcher daemon for dekuNukem's duckypad
+.SH SYNOPSIS
+.nf
+\fBduckypad_daemon\fP [\fIOPTIONS\fP]
+.fi
+.SH DESCRIPTION
+\fBduckypad_daemon\fP is a daemon that allows to control the active profile of duckyPad via HID communication.
+It uses information about the currently focused application to select the profile.
+On X11, macOS and Windows systems it will automatically determine this information, while providing an interface for other systems like ones running Wayland.
+.sp
+The following options are currently supported:
+.TP
+\fB\-c\fP, \fB\-\-config\fP \fB<CONFIG>\fP
+Specifies a file path to use a different config file than default.
+.TP
+\fB\-w\fP, \fB\-\-wait\fP \fB<WAIT>\fP
+Sets an amount of seconds to wait between retries if connections to the duckyPad fail on start.
+.TP
+\fB\-b\fP, \fB\-\-callback\fP \fB<CALLBACK>\fP
+Specifies a file path to an executable that gets called on profile change caused by focus change. See \fI\%Callbacks\fP below for details.
+.TP
+\fB\-s\fP, \fB\-\-window\-script\fP \fB<WINDOW_SCRIPT>\fP
+Specifies a file path to an executable that gets called periodically to retrieve information about the active window on platforms and systems without supported native APIs. See \fI\%Window Scripts\fP below for details.
+.TP
+\fB\-h\fP, \fB\-\-help\fP
+Print basic usage information.
+.TP
+\fB\-V\fP, \fB\-\-version\fP
+Print version information.
+.SH Configuration
+The default config location is one of the following directories:
+.nf
+- Linux: `$HOME/.config/duckypad_daemon/.config.json` or `$XDG_CONFIG_HOME/duckypad_daemon/config.json`
+- Windows: `C:\\Users\\<user>\\AppData\\Roaming\\duckypad_daemon\\config.json`
+- macOS: `$HOME/Library/Application Support/duckypad_daemon/config.json`
+.fi
+.sp
+There is backwards\-compatibility with the python-based autoswitcher, so one can specify its config file as well.
+It is located in one of the following directories instead:
+.nf
+- Linux: `$HOME/.local/share/duckypad_autoswitcher/config.txt` or `$XDG_DATA_DIRS/duckypad_autoswitcher/config.txt`
+- Windows: `C:\\Users\\<user>\\Documents\\duckypad_autoswitche\\config.txt`
+- macOS: `$HOME/Library/Application Support/duckypad_autoswitcher/config.txt`
+.fi
+.sp
+The daemon will create a default config if one doesn't exist already or is specified via \fB\-c\fP or \fB\-\-config\fP.
+It is structured in the form of a JSON object with an array field \fBrules\_list\fP that is an array of JSON objects called rules.
+Each rule object has the following keys:
+.TP
+.B "app_name"
+This specifies a pattern to match commands or application names to.
+.TP
+.B "title, window_title"
+This is either a pattern to match the window title or the _NET_WM_NAME property.
+.TP
+.B "process_name (optional)"
+The name, category or WM_CLASS property patterns to match.
+.TP
+.B "enabled"
+This specifies whether the rule should be enabled or not.
+.TP
+.B "switch_to"
+Sets the number of the profile on the duckypad to switch to, if the rule matches.
+.SH Callbacks
+The daemon has support for callbacks via the \fB-b\fP, \fB--callback\fP option.
+The option is used to pass the path of a script to the daemon which gets called whenever the duckyPad profile changes.
+The script must then provide a specific set of command-line options:
+.TP
+\fB\-p\fP \fB<PROFILE>\fP
+Will be the set to the profile that is being switched to.
+.TP
+\fB\-a\fP \fB<APP_NAME>\fP (optional)
+This gets set to the app name of the active window, if it is known.
+.TP
+\fB\-t\fP \fB<TITLE>\fP (optional)
+This gets set to the window title or _NET_WM_NAME of the active window, if it is known.
+.TP
+\fB\-n\fP \fB<PROCESS_NAME>\fP (optional)
+This gets set to the process name or _WM_CLASS of the active window, if it is known.
+.SH Window Scripts
+The daemon has native support for systems running an X server, Windows and macOS, with manual support for Linux with Wayland and other systems, as long as there is a way to create a custom script which can determine the required information of the active window.
+The \fB\-s\fP, \fB\-\-window\-script\fP option can be used to supply a path to an executable which provides the required information about the currently active window in form of a JSON object.
+The object must contain the following items:
+.TP
+.B "title"
+A string that contains the window title or an equivalent to the X11 _NET_WM_NAME property.
+.TP
+.B "process_name"
+A string that contains the process name or an equivalent to the X11 _WM_CLASS property.
+.TP
+.B "process_id (optional)"
+The ID of the underlying process as an unsigned integer value (64 bit).
+.TP
+.B "window_id (optional)"
+The ID of the window in the window\-managers tree as a string.
+.TP
+.B "position (optional)"
+A JSON object containing \fBx\fP, \fBy\fP, \fBw\fP and \fBh\fP keys with unsigned integer values (64 bit) that describe the window position on screen.
+.SH EXAMPLES
+Examples can be found in the examples directory of the project 
+.UR https://github.com/traumweh/duckypad_daemon
+.UE .
+.SH COPYRIGHT
+2023, Lilith
+.MT contact@traumweh.dev
+.ME
