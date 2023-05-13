@@ -29,11 +29,11 @@ duckypad_daemon --wait x
 With version 1.0.0 and forward the daemon does not share its config file with the python GUI by default. 
 The default config location is now in one of the following directories:
 - Linux: `$HOME/.config/duckypad_daemon/config.json` or `$XDG_CONFIG_HOME/duckypad_daemon/config.json`
-- Windows: `C:\Users\<your username>\AppData\Roaming\duckypad_daemon\config.json`
+- Windows: `C:\Users\<user>\AppData\Roaming\duckypad_daemon\config.json`
 - macOS: `$HOME/Library/Application Support/duckypad_daemon/config.json`
 But one can still use `-c, --config` to use the config of the python-based autoswitcher, probably under on of the following locations:
 - Linux: `$HOME/.local/share/duckypad_autoswitcher/config.txt` or `$XDG_DATA_DIRS/duckypad_autoswitcher/config.txt`
-- Windows: `C:\Documents\duckypad_autoswitcher\config.txt`
+- Windows: `C:\Users\<user>\Documents\duckypad_autoswitcher\config.txt`
 - macOS: `$HOME/Library/Application Support/duckypad_autoswitcher/config.txt`
 
 If no config exists, then the daemon will create one for you. It is structured like this:
