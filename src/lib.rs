@@ -5,6 +5,7 @@ pub mod hid;
 
 use active_win_pos_rs::{get_active_window, ActiveWindow, WindowPosition};
 use hidapi::HidApi;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     fs::File,
@@ -28,12 +29,36 @@ pub mod enums {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct Rules {
+    app_name: String,
+    process_name: Option<String>,
+    #[serde(alias = "title")]
+    window_title: String,
+    enabled: bool,
+    switch_to: u32,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Config {
+    autoswitch_enabled: Option<bool>,
+    rules_list: Vec<Rules>,
+}
+
 fn create_default_config(path: &PathBuf) {
     eprintln!("Creating default config, because file doesn't exist");
     let mut file =
         File::create(path).unwrap_or_else(|error| panic!("Couldn't create config file:\n{error}"));
-    file.write_all(b"[]")
-        .expect("Couldn't write to config file!");
+
+    file.write_all(
+        serde_json::to_string(&Config {
+            autoswitch_enabled: Some(false),
+            rules_list: vec![],
+        })
+        .expect("Failed to serialize default config.")
+        .as_bytes(),
+    )
+    .expect("Couldn't write to config file!");
 }
 
 /// Returns a `PathBuf` for the config file path and creates a default config if
@@ -101,14 +126,14 @@ pub fn config_file(path: Option<PathBuf>) -> PathBuf {
 ///
 /// This function will panic either if the config file at `path` cannot be read
 /// from or if it cannot be parsed as a JSON.
-pub fn read_config(path: &PathBuf) -> Value {
+pub fn read_config(path: &PathBuf) -> Config {
     let file =
         File::open(path).unwrap_or_else(|error| panic!("Error reading config file:\n{error}"));
     let reader = std::io::BufReader::new(file);
-    let json: Value = serde_json::from_reader(reader)
-        .unwrap_or_else(|error| panic!("Error parsing config file as JSON:\n{error}"));
+    let config: Config = serde_json::from_reader(reader)
+        .unwrap_or_else(|error| panic!("Error parsing and deserialize config file:\n{error}"));
 
-    json
+    config
 }
 
 /// Switches to the next profile if it is different from the previous one and
@@ -124,11 +149,11 @@ pub fn read_config(path: &PathBuf) -> Value {
 pub fn switch_profile(
     api: &HidApi,
     sys: &mut Option<System>,
-    config: &Value,
-    prev_profile: Option<u8>,
+    config: &Config,
+    prev_profile: Option<u32>,
     callback: &mut Option<Command>,
     os: &enums::OSIdent,
-) -> Option<u8> {
+) -> Option<u32> {
     let window = match os {
         enums::OSIdent::UNSUPPORTED(script)
         | enums::OSIdent::LINUX(enums::LinuxServer::WAYLAND(script)) => {
@@ -275,7 +300,7 @@ fn custom_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
 /// * `callback` - optional callback script to run on change
 /// * `profile` - id of the profile on the duckypad (1 <= id <= 31)
 /// * `window` - information about the active window
-pub fn run_callback(callback: &mut Command, profile: u8, window: ActiveWindow, app_name: &String) {
+pub fn run_callback(callback: &mut Command, profile: u32, window: ActiveWindow, app_name: &String) {
     let mut callback = callback.arg("-p").arg(profile.to_string());
 
     if !app_name.is_empty() {
@@ -321,14 +346,17 @@ fn get_app_name(sys: &mut Option<System>, pid: Pid) -> Option<String> {
 /// # Panics
 ///
 /// The function will panic if `profile` is not a value in `(1..=31)`.
-pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidapi::HidError> {
-    assert!((1..=31).contains(&profile)); // duckyPad limits
-
+pub fn goto_profile(device: &hidapi::HidDevice, profile: u32) -> Result<(), hidapi::HidError> {
     println!("Switching to profile {profile}");
     let mut buf = [0x00; hid::PC_TO_DUCKYPAD_HID_BUF_SIZE];
+    let profile_buf = profile.to_le_bytes();
+
     buf[0] = 0x05;
     buf[2] = 0x01;
-    buf[3] = profile;
+
+    for (i, p) in profile_buf.iter().enumerate() {
+        buf[3 + i] = *p;
+    }
 
     hid::write(device, buf)?;
     Ok(())
@@ -341,65 +369,19 @@ pub fn goto_profile(device: &hidapi::HidDevice, profile: u8) -> Result<(), hidap
 ///
 /// * `config` - serde Value of the current configuration
 /// * `window` - information about the active window
-pub fn next_profile(config: &Value, window: &ActiveWindow, app_name: &str) -> Option<u8> {
-    let config = config
-        .as_object()
-        .expect("Config needs to be a JSON object!");
-    let rules = config
-        .get("rules_list")
-        .expect("Config field \"rules_list\" is missing!")
-        .as_array()
-        .expect("Config field \"rules_list\" needs to be a JSON array!");
-
-    for item in rules.iter() {
-        let item = item
-            .as_object()
-            .expect("Config rules need tobe JSON objects!");
-        if item
-            .get("enabled")
-            .expect("Config rule field \"enabled\" is missing!")
-            .as_bool()
-            .expect("Config rule field \"enabled\" needs to be a bool!")
-        {
-            let conf_process_name = match item.get("process_name") {
-                Some(value) => value
-                    .as_str()
-                    .expect("Config rule field \"process_name\" needs to be a string!"),
-                None => "",
-            };
-            let conf_title = match item.get("title") {
-                Some(value) => value
-                    .as_str()
-                    .expect("Config rule field \"title\" needs to be a string!"),
-                // Compatibility with python-based autoswitcher
-                None => item
-                    .get("window_title")
-                    .expect("Config rule field \"title\" (alias \"window_title\") is missing!")
-                    .as_str()
-                    .expect("Config rule field \"window_title\" needs to be a string!"),
-            };
-            let conf_app_name = item
-                .get("app_name")
-                .expect("Config rule field \"app_name\" is missing!")
-                .as_str()
-                .expect("Config rule field \"app_name\" needs to be a string!");
-
-            if (conf_process_name.is_empty() || window.process_name.contains(conf_process_name))
-                && (conf_title.is_empty() || window.title.contains(conf_title))
-                && (conf_app_name.is_empty() || app_name.contains(conf_app_name))
-            {
-                let profile = item
-                    .get("switch_to")
-                    .expect("Config rule field \"switch_to\" is missing!")
-                    .as_u64()
-                    .expect("Config rule field \"switch_to\" needs to be an unsigned int (u8)!");
-
-                return Some(
-                    u8::try_from(profile).expect(
-                        "Config rule field \"switch_to\" needs to be an unsigned int (u8)!",
-                    ),
-                );
+pub fn next_profile(config: &Config, window: &ActiveWindow, app_name: &str) -> Option<u32> {
+    for rule in &config.rules_list {
+        if rule.enabled
+            && (rule.app_name.is_empty() || app_name.contains(&rule.app_name))
+            && (rule.window_title.is_empty() || window.title.contains(&rule.window_title))
+            && match &rule.process_name {
+                Some(process_name) => {
+                    process_name.is_empty() || window.process_name.contains(process_name)
+                }
+                None => true,
             }
+        {
+            return Some(rule.switch_to);
         }
     }
 

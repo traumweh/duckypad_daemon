@@ -90,7 +90,7 @@ fn main() {
         None
     };
 
-    let mut prev_profile: Option<u8> = None;
+    let mut prev_profile: Option<u32> = None;
 
     loop {
         prev_profile = switch_profile(&api, &mut sys, &config, prev_profile, &mut callback, &os);
