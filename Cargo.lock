@@ -341,7 +341,7 @@ dependencies = [
 
 [[package]]
 name = "duckypad_daemon"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "active-win-pos-rs",
  "clap 4.2.5",
