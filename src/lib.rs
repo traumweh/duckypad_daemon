@@ -313,9 +313,16 @@ pub fn run_callback(callback: &mut Command, profile: u32, window: ActiveWindow, 
         callback = callback.arg("-n").arg(window.process_name);
     }
 
-    if let Err(err) = callback.spawn() {
-        eprintln!("Failed to run callback: {err}");
-    }
+    match callback.spawn() {
+        Ok(mut child) => {
+            std::thread::spawn(move || {
+                let _: Result<_, _> = child.wait();
+            });
+        }
+        Err(err) => {
+            eprintln!("Failed to run callback: {err}");
+        }
+    };
 }
 
 fn get_app_name(sys: &mut Option<System>, pid: Pid) -> Option<String> {
