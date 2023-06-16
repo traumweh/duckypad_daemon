@@ -1,7 +1,7 @@
 [package]
 name = "duckypad_daemon"
 description = "A profile autoswitcher daemon for dekuNukem's duckypad"
-version = "1.0.1"
+version = "1.0.2"
 authors = ["traumweh <contact@traumweh.dev>"]
 repository = "https://github.com/traumweh/duckypad_daemon"
 homepage = "https://lilith.codes"
