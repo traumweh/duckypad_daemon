@@ -15,7 +15,7 @@ jobs:
         include:
           - build: linux
             os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
+            target: x86_64-unknown-linux-gnu
 
           - build: macos
             os: macos-latest
@@ -41,7 +41,14 @@ jobs:
       - name: Get the release version from the tag
         shell: bash
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-      
+
+      - name: Install libudev for Cross on Linux
+        uses: bash
+        run: |
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            echo -e "[target.x86_64-unknown-linux-gnu]\npre-build = [\"apt-get update && apt-get install -y libudev-dev\"]" > Cross.toml
+          fi
+
       - name: Build project
         uses: actions-rs/cargo@v1
         with:
@@ -57,12 +64,12 @@ jobs:
           
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
             mv "target/${{ matrix.target }}/release/$binary.exe" "$dir"
-            7z a "$dirname.zip" "$dirname"
-            echo "ASSET=$dirname.zip" >> $GITHUB_ENV
+            7z a "$dir.zip" "$dir"
+            echo "ASSET=$dir.zip" >> $GITHUB_ENV
           else
             mv "target/${{ matrix.target }}/release/$binary" "$dir"
-            tar -czf "$dirname.tar.gz" "$dirname"
-            echo "ASSET=$dirname.tar.gz" >> $GITHUB_ENV
+            tar -czf "$dir.tar.gz" "$dir"
+            echo "ASSET=$dir.tar.gz" >> $GITHUB_ENV
           fi
 
       - name: Upload binaries to release
