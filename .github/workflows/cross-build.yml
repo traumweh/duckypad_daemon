@@ -61,8 +61,8 @@ jobs:
         run: |
           binary="duckypad_daemon"
           dir="$binary-${{ env.VERSION }}-${{ matrix.target }}"
-          
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+
+          if [ "${{ matrix.target }}" == "x86_64-pc-windows-gnu" ]; then
             mv "target/${{ matrix.target }}/release/$binary.exe" "$dir"
             7z a "$dir.zip" "$dir"
             echo "ASSET=$dir.zip" >> $GITHUB_ENV
