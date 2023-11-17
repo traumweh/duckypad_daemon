@@ -278,7 +278,8 @@ fn custom_active_window(script: &PathBuf) -> Result<ActiveWindow, ()> {
         };
         let active_window: ActiveWindow = ActiveWindow {
             title,
-            process_name,
+            process_path: PathBuf::new(), // TODO: Ignore path for now
+            app_name: process_name,
             window_id,
             process_id,
             position,
@@ -309,8 +310,8 @@ pub fn run_callback(callback: &mut Command, profile: u32, window: ActiveWindow, 
     if !window.title.is_empty() {
         callback = callback.arg("-t").arg(window.title);
     }
-    if !window.process_name.is_empty() {
-        callback = callback.arg("-n").arg(window.process_name);
+    if !window.app_name.is_empty() {
+        callback = callback.arg("-n").arg(window.app_name);
     }
 
     match callback.spawn() {
@@ -383,7 +384,7 @@ pub fn next_profile(config: &Config, window: &ActiveWindow, app_name: &str) -> O
             && (rule.window_title.is_empty() || window.title.contains(&rule.window_title))
             && match &rule.process_name {
                 Some(process_name) => {
-                    process_name.is_empty() || window.process_name.contains(process_name)
+                    process_name.is_empty() || window.app_name.contains(process_name)
                 }
                 None => true,
             }

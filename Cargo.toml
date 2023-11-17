@@ -10,10 +10,10 @@ edition = "2021"
 license = "GPL-3.0"
 
 [dependencies]
-hidapi = "2.3.1"
+hidapi = "2.4.1"
 dirs-next = "2.0.0"
-active-win-pos-rs = "0.7"
+active-win-pos-rs = "0.8"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-clap = { version = "4.2.5", features = ["derive"] }
-sysinfo = "0.28.4"
+clap = { version = "4.4.8", features = ["derive"] }
+sysinfo = "0.29.10"
