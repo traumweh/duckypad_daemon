@@ -65,12 +65,20 @@ fn main() {
         "macos" => enums::OSIdent::MACOS,
         "windows" => enums::OSIdent::WINDOWS,
         "linux" => {
+            let session_type = env::var("XDG_SESSION_TYPE");
+
             if let Some(script) = args.window_script {
                 enums::OSIdent::LINUX(enums::LinuxServer::WAYLAND(script))
-            } else if env::var("WAYLAND_DISPLAY").is_ok() {
+            } else if session_type
+                .as_ref()
+                .is_ok_and(|session| session == "wayland")
+                || env::var("WAYLAND_DISPLAY").is_ok_and(|display| !display.is_empty())
+            {
                 panic!("Wayland has no proper API for active window information. See --window-script,-s as well as the readme!")
-            } else {
+            } else if session_type.as_ref().is_ok_and(|session| session == "x11") {
                 enums::OSIdent::LINUX(enums::LinuxServer::XORG)
+            } else {
+                panic!("Unrecognized display server. See --window-script,-s as well as the readme!")
             }
         }
         _ => {
